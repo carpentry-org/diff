@@ -1,0 +1,52 @@
+(use-all Array Map)
+
+(deftype (Diff a) [eq (Array a) insertions (Array a) deletions (Array a)])
+
+(defmodule Diff
+  (defn = [d1 d2]
+    (and (= (Diff.eq d1) (Diff.eq d2))
+         (and (= (Diff.insertions d1) (Diff.insertions d2))
+              (= (Diff.deletions d1) (Diff.deletions d2)))))
+
+  (defn merge [d1 d2]
+    (Diff.init (concat &[@(Diff.eq d1) @(Diff.eq d2)])
+               (concat &[@(Diff.insertions d1) @(Diff.insertions d2)])
+               (concat &[@(Diff.deletions d1) @(Diff.deletions d2)])))
+
+  (defn diff [old new]
+    (let-do [oidxm (create)
+             overlap (create)
+             sso 0
+             ssn 0
+             sl 0]
+      (for [i 0 (length old)]
+        (let [e (nth old i)]
+          (set! oidxm (put &oidxm e
+                               &(push-back (get &oidxm e) i)))))
+      (for [inew 0 (length new)]
+        (let-do [_overlap (create)
+                 ol &(get &oidxm (nth new inew))]
+          (for [i 0 (length ol)]
+            (let-do [iold @(nth ol i)]
+              (set! _overlap (put &_overlap &iold
+                                  &(Int.inc (if (/= iold 0)
+                                              (get &overlap &(Int.dec iold))
+                                              iold))))
+              (if (> (get &_overlap &iold) sl)
+                (do
+                  (set! sl (get &_overlap &iold))
+                  (set! sso (Int.inc (- iold sl)))
+                  (set! ssn (Int.inc (- inew sl))))
+                ())))
+          (set! overlap _overlap)))
+      (if (= 0 sl)
+        (Diff.init [] @new @old)
+        (merge
+          &(merge &(diff &(prefix-array old sso) &(prefix-array new ssn))
+                  &(Diff.init (subarray new ssn (+ ssn sl)) [] []))
+          &(diff &(suffix-array old (+ sso sl))
+                 &(suffix-array new (+ ssn sl)))))))
+
+  (defn string-diff [old new]
+    (diff &(String.words old) &(String.words new)))
+)

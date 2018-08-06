@@ -1,0 +1,25 @@
+(load "Test.carp")
+
+(load "diff.carp")
+
+(use-all Diff Test)
+
+(defn main []
+  (with-test test
+    (assert-equal test
+                  &[1 2 3]
+                  (Diff.eq &(diff &[1 2 3] &[1 2 3]))
+                  "diffing equal lists means everything is equal"
+    )
+    (assert-equal test
+                  &(Diff.init [1 3] [2] [4])
+                  &(diff &[1 4 3] &[1 2 3])
+                  "diffing non-equal lists means we get a diff"
+    )
+    (assert-equal test
+                  &(Diff.init [@"I" @"okay"] [@"was"] [@"am"])
+                  &(string-diff "I am okay" "I was okay")
+                  "diffing strings works as well"
+    )
+    (print-test-results test))
+)
