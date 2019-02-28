@@ -53,7 +53,12 @@
                 ())))
           (set! overlap _overlap)))
       (if (= 0 sl)
-        [(Insertion @new) (Deletion @old)]
+        (let-do [res []]
+          (when (> (Array.length new) 0)
+            (Array.push-back! &res (Insertion @new)))
+          (when (> (Array.length old) 0)
+            (Array.push-back! &res (Deletion @old)))
+          res)
         (Array.concat
           &[(Array.concat &[
             (diff &(Array.prefix-array old sso) &(Array.prefix-array new ssn))

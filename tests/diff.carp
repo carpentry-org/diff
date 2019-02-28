@@ -12,12 +12,12 @@
                   "diffing equal lists means everything is equal"
     )
     (assert-equal test
-                  &[(Eq [1]) (Insertion [4]) (Deletion [2]) (Eq [3])]
+                  &[(Eq [1]) (Insertion [2]) (Deletion [4]) (Eq [3])]
                   &(diff &[1 4 3] &[1 2 3])
                   "diffing non-equal lists means we get a diff"
     )
     (assert-equal test
-                  &[(Eq [@"I"]) (Insertion [@"am"]) (Deletion [@"was"]) (Eq [@"okay"])]
+                  &[(Eq [@"I"]) (Insertion [@"was"]) (Deletion [@"am"]) (Eq [@"okay"])]
                   &(string-diff "I am okay" "I was okay")
                   "diffing strings works as well"
     )
