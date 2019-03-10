@@ -1,52 +1,90 @@
-(use-all Array Map)
-
-(deftype (Diff a) [eq (Array a) insertions (Array a) deletions (Array a)])
+(deftype (Diff a)
+  (Eq [a])
+  (Insertion [a])
+  (Deletion [a])
+)
 
 (defmodule Diff
-  (defn = [d1 d2]
-    (and (= (Diff.eq d1) (Diff.eq d2))
-         (and (= (Diff.insertions d1) (Diff.insertions d2))
-              (= (Diff.deletions d1) (Diff.deletions d2)))))
+  (defn = [a b]
+    (match a
+      (Eq x)
+        (match b
+          (Eq y) (= &x &y)
+          _ false)
+      (Insertion x)
+        (match b
+          (Insertion y) (= &x &y)
+          _ false)
+      (Deletion x)
+        (match b
+          (Deletion y) (= &x &y)
+          _ false)
+    )
+  )
 
-  (defn merge [d1 d2]
-    (Diff.init (concat &[@(Diff.eq d1) @(Diff.eq d2)])
-               (concat &[@(Diff.insertions d1) @(Diff.insertions d2)])
-               (concat &[@(Diff.deletions d1) @(Diff.deletions d2)])))
+  (defn /= [a b]
+    (not (Diff.= a b)))
 
   (defn diff [old new]
-    (let-do [oidxm (create)
-             overlap (create)
+    (let-do [oidxm (Map.create)
+             overlap (Map.create)
              sso 0
              ssn 0
              sl 0]
-      (for [i 0 (length old)]
-        (let [e (nth old i)]
-          (set! oidxm (put &oidxm e
-                               &(push-back (get &oidxm e) i)))))
-      (for [inew 0 (length new)]
-        (let-do [_overlap (create)
-                 ol &(get &oidxm (nth new inew))]
-          (for [i 0 (length ol)]
-            (let-do [iold @(nth ol i)]
-              (set! _overlap (put &_overlap &iold
-                                  &(Int.inc (if (/= iold 0)
-                                              (get &overlap &(Int.dec iold))
-                                              iold))))
-              (if (> (get &_overlap &iold) sl)
+      (for [i 0 (Array.length old)]
+        (let [e (Array.nth old i)
+              to-u (Map.get &oidxm e)]
+          (set! oidxm (Map.put oidxm e &(Array.push-back to-u i)))))
+      (for [inew 0 (Array.length new)]
+        (let-do [_overlap (Map.create)
+                 ol &(Map.get &oidxm (Array.nth new inew))]
+          (for [i 0 (Array.length ol)]
+            (let-do [iold @(Array.nth ol i)]
+              (set! _overlap (Map.put _overlap &iold
+                                      &(Int.inc (if (/= iold 0)
+                                                (Map.get &overlap
+                                                         &(Int.dec iold))
+                                                iold))))
+              (if (> (Map.get &_overlap &iold) sl)
                 (do
-                  (set! sl (get &_overlap &iold))
+                  (set! sl (Map.get &_overlap &iold))
                   (set! sso (Int.inc (- iold sl)))
                   (set! ssn (Int.inc (- inew sl))))
                 ())))
           (set! overlap _overlap)))
       (if (= 0 sl)
-        (Diff.init [] @new @old)
-        (merge
-          &(merge &(diff &(prefix-array old sso) &(prefix-array new ssn))
-                  &(Diff.init (subarray new ssn (+ ssn sl)) [] []))
-          &(diff &(suffix-array old (+ sso sl))
-                 &(suffix-array new (+ ssn sl)))))))
+        (let-do [res []]
+          (when (> (Array.length new) 0)
+            (Array.push-back! &res (Insertion @new)))
+          (when (> (Array.length old) 0)
+            (Array.push-back! &res (Deletion @old)))
+          res)
+        (Array.concat
+          &[(Array.concat &[
+            (diff &(Array.prefix-array old sso) &(Array.prefix-array new ssn))
+                  [(Eq (Array.subarray new ssn (+ ssn sl)))]])
+           (diff &(Array.suffix-array old (+ sso sl))
+                 &(Array.suffix-array new (+ ssn sl)))]))))
 
   (defn string-diff [old new]
     (diff &(String.words old) &(String.words new)))
+
+  (defn eq? [d]
+    (match @d
+      (Eq _) true
+      _ false))
+
+  (defn inserted? [d]
+    (match @d
+      (Insertion _) true
+      _ false))
+
+  (defn deleted? [d]
+    (match @d
+      (Deletion _) true
+      _ false))
+
+  (defn eq [d] (Array.copy-filter &eq? d))
+  (defn insertions [d] (Array.copy-filter &inserted? d))
+  (defn deletions [d] (Array.copy-filter &deleted? d))
 )
