@@ -22,9 +22,6 @@
     )
   )
 
-  (defn /= [a b]
-    (not (Diff.= a b)))
-
   (defn diff [old new]
     (let-do [oidxm {}
              overlap {}
