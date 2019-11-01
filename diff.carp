@@ -6,17 +6,17 @@
 
 (defmodule Diff
   (defn = [a b]
-    (match a
+    (match @a
       (Eq x)
-        (match b
+        (match @b
           (Eq y) (= &x &y)
           _ false)
       (Insertion x)
-        (match b
+        (match @b
           (Insertion y) (= &x &y)
           _ false)
       (Deletion x)
-        (match b
+        (match @b
           (Deletion y) (= &x &y)
           _ false)
     )
@@ -26,20 +26,20 @@
     (not (Diff.= a b)))
 
   (defn diff [old new]
-    (let-do [oidxm (Map.create)
-             overlap (Map.create)
+    (let-do [oidxm {}
+             overlap {}
              sso 0
              ssn 0
              sl 0]
       (for [i 0 (Array.length old)]
-        (let [e (Array.nth old i)
-              to-u (Map.get &oidxm e)]
+        (let [e (Array.unsafe-nth old i)
+              to-u (Map.get-with-default &oidxm e &[])]
           (set! oidxm (Map.put oidxm e &(Array.push-back to-u i)))))
       (for [inew 0 (Array.length new)]
-        (let-do [_overlap (Map.create)
-                 ol &(Map.get &oidxm (Array.nth new inew))]
+        (let-do [_overlap {}
+                 ol &(Map.get-with-default &oidxm (Array.unsafe-nth new inew) &[])]
           (for [i 0 (Array.length ol)]
-            (let-do [iold @(Array.nth ol i)]
+            (let-do [iold @(Array.unsafe-nth ol i)]
               (set! _overlap (Map.put _overlap &iold
                                       &(Int.inc (if (/= iold 0)
                                                 (Map.get &overlap
