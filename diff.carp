@@ -58,10 +58,10 @@
           res)
         (Array.concat
           &[(Array.concat &[
-            (diff &(Array.prefix-array old sso) &(Array.prefix-array new ssn))
-                  [(Eq (Array.subarray new ssn (+ ssn sl)))]])
-           (diff &(Array.suffix-array old (+ sso sl))
-                 &(Array.suffix-array new (+ ssn sl)))]))))
+            (diff &(Array.prefix old sso) &(Array.prefix new ssn))
+                  [(Eq (Array.slice new ssn (+ ssn sl)))]])
+           (diff &(Array.suffix old (+ sso sl))
+                 &(Array.suffix new (+ ssn sl)))]))))
 
   (defn string-diff [old new]
     (diff &(String.words old) &(String.words new)))
