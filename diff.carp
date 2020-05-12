@@ -21,6 +21,7 @@
           _ false)
     )
   )
+  (implements = Diff.=)
 
   (defn diff [old new]
     (let-do [oidxm {}
