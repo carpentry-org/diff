@@ -24,16 +24,17 @@
       (for [inew 0 (Array.length new)]
         (let-do [_overlap {}
                  ol &(Map.get-with-default &oidxm
-                   (Array.unsafe-nth new inew)
-                   &[])]
+                                           (Array.unsafe-nth new inew)
+                                           &[])]
           (for [i 0 (Array.length ol)]
             (let-do [iold @(Array.unsafe-nth ol i)]
               (set! _overlap
                     (Map.put _overlap
-                      &iold
-                      &(Int.inc (if (/= iold 0)
-                          (Map.get &overlap &(Int.dec iold))
-                          iold))))
+                             &iold
+                             &(Int.inc
+                               (if (/= iold 0)
+                                 (Map.get &overlap &(Int.dec iold))
+                                 iold))))
               (when-do (> (Map.get &_overlap &iold) sl)
                 (set! sl (Map.get &_overlap &iold))
                 (set! sso (Int.inc (- iold sl)))
@@ -45,9 +46,9 @@
             (Array.push-back! &res (Insertion @new)))
           (when (> (Array.length old) 0) (Array.push-back! &res (Deletion @old)))
           res)
-        (Array.concat &[
-            (Array.concat &[
-                (diff &(Array.prefix old sso) &(Array.prefix new ssn))
+        (Array.concat
+          &[(Array.concat
+              &[(diff &(Array.prefix old sso) &(Array.prefix new ssn))
                 [(Eq (Array.slice new ssn (+ ssn sl)))]])
             (diff &(Array.suffix old (+ sso sl)) &(Array.suffix new (+ ssn sl)))]))))
 
