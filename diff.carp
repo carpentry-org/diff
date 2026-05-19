@@ -29,11 +29,8 @@
           (for [i 0 (Array.length ol)]
             (let-do [iold @(Array.unsafe-nth ol i)
                      new-val (Int.inc
-                               (if (/= iold 0)
-                                 (Map.get &overlap &(Int.dec iold))
-                                 iold))]
-              (set! _overlap
-                    (Map.put _overlap &iold &new-val))
+                       (if (/= iold 0) (Map.get &overlap &(Int.dec iold)) iold))]
+              (set! _overlap (Map.put _overlap &iold &new-val))
               (when-do (> (Map.get &_overlap &iold) sl)
                 (set! sl (Map.get &_overlap &iold))
                 (set! sso (Int.inc (- iold sl)))
