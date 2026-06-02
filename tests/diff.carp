@@ -17,4 +17,44 @@
     (assert-equal test
       &[(Eq [@"I"]) (Insertion [@"was"]) (Deletion [@"am"]) (Eq [@"okay"])]
       &(string-diff "I am okay" "I was okay")
-      "diffing strings works as well")))
+      "diffing strings works as well")
+    (assert-equal test
+      &[]
+      &(diff &[] &(the (Array Int) []))
+      "diffing two empty arrays returns empty")
+    (assert-equal test
+      &[(Insertion [1 2 3])]
+      &(diff &[] &[1 2 3])
+      "diffing empty old with non-empty new returns insertion")
+    (assert-equal test
+      &[(Deletion [1 2 3])]
+      &(diff &[1 2 3] &[])
+      "diffing non-empty old with empty new returns deletion")
+    (assert-equal test
+      &[(Eq [42])]
+      &(Diff.eq &(diff &[42] &[42]))
+      "diffing single-element arrays with same value")
+    (assert-equal test
+      &[(Insertion [2]) (Deletion [1])]
+      &(diff &[1] &[2])
+      "diffing single-element arrays with different values")
+    (assert-equal test
+      &[(Insertion [4 5 6]) (Deletion [1 2 3])]
+      &(diff &[1 2 3] &[4 5 6])
+      "completely different arrays")
+    (assert-equal test
+      &[(Eq [1 2]) (Insertion [3 4])]
+      &(diff &[1 2] &[1 2 3 4])
+      "old is a prefix of new")
+    (assert-equal test
+      &[(Eq [1 2]) (Deletion [3 4])]
+      &(diff &[1 2 3 4] &[1 2])
+      "new is a prefix of old")
+    (assert-equal test
+      &[(Insertion [1 2]) (Eq [3 4])]
+      &(diff &[3 4] &[1 2 3 4])
+      "old is a suffix of new")
+    (assert-equal test
+      &[(Deletion [1 2]) (Eq [3 4])]
+      &(diff &[1 2 3 4] &[3 4])
+      "new is a suffix of old")))
