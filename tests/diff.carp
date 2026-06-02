@@ -57,4 +57,102 @@
     (assert-equal test
       &[(Deletion [1 2]) (Eq [3 4])]
       &(diff &[1 2 3 4] &[3 4])
-      "new is a suffix of old")))
+      "new is a suffix of old")
+
+    ; line-diff tests
+    (assert-equal test
+      &[(Eq [@"a"]) (Insertion [@"new"]) (Deletion [@"old"]) (Eq [@"b"])]
+      &(line-diff "a
+old
+b" "a
+new
+b")
+      "line-diff splits on newlines and diffs")
+    (assert-equal test &[(Eq [@"same" @"lines"])] &(Diff.eq &(line-diff "same
+lines" "same
+lines")) "line-diff of identical strings is all equal")
+
+    ; char-diff tests
+    (assert-equal test
+      &[(Eq [\a]) (Insertion [\x]) (Deletion [\b]) (Eq [\c])]
+      &(char-diff "abc" "axc")
+      "char-diff diffs individual characters")
+    (assert-equal test
+      &[(Eq [\h \e \l \l \o])]
+      &(Diff.eq &(char-diff "hello" "hello"))
+      "char-diff of identical strings is all equal")
+
+    ; unified tests
+    (assert-equal test &(String.concat &[@"@@ -1,3 +1,3 @@
+" @" line1
+" @"+changed
+" @"-line2
+" @" line3
+"]) &(unified &(line-diff "line1
+line2
+line3" "line1
+changed
+line3")) "unified renders single-hunk diff with correct header")
+    (assert-equal test "" &(unified &(line-diff "same
+text" "same
+text")) "unified of identical strings is empty")
+    (assert-equal test &(String.concat &[@"@@ -1,4 +1,4 @@
+" @"+new
+" @"-old
+" @" a
+" @" b
+" @" c
+"]) &(unified &(line-diff "old
+a
+b
+c" "new
+a
+b
+c")) "unified handles change at start")
+    (assert-equal test &(String.concat &[@"@@ -1,4 +1,4 @@
+" @" a
+" @" b
+" @" c
+" @"+new
+" @"-old
+"]) &(unified &(line-diff "a
+b
+c
+old" "a
+b
+c
+new")) "unified handles change at end")
+    (assert-equal test &(String.concat &[@"@@ -1,5 +1,5 @@
+" @" a
+" @"+BB
+" @"-b
+" @" c
+" @" d
+" @" e
+" @"@@ -8,4 +8,4 @@
+" @" h
+" @" i
+" @" j
+" @"+KK
+" @"-k
+"]) &(unified &(line-diff "a
+b
+c
+d
+e
+f
+g
+h
+i
+j
+k" "a
+BB
+c
+d
+e
+f
+g
+h
+i
+j
+KK")) "unified generates multiple hunks for distant changes")))
