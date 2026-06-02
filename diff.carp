@@ -48,7 +48,30 @@
                 [(Eq (Array.slice new ssn (+ ssn sl)))]])
             (diff &(Array.suffix old (+ sso sl)) &(Array.suffix new (+ ssn sl)))]))))
 
+  (doc str "Returns a string representation of a Diff entry.")
+  (defn str [d]
+    (match-ref d
+      (Eq xs) (String.concat &[@"(Eq " (str xs) (Char.str \))])
+      (Insertion xs) (String.concat &[@"(Insertion " (str xs) (Char.str \))])
+      (Deletion xs) (String.concat &[@"(Deletion " (str xs) (Char.str \))])))
+  (implements str Diff.str)
+
+  (doc prn
+    "Returns a string representation of a Diff entry suitable for printing.")
+  (defn prn [d]
+    (match-ref d
+      (Eq xs) (String.concat &[@"(Eq " (prn xs) (Char.str \))])
+      (Insertion xs) (String.concat &[@"(Insertion " (prn xs) (Char.str \))])
+      (Deletion xs) (String.concat &[@"(Deletion " (prn xs) (Char.str \))])))
+  (implements prn Diff.prn)
+
   (defn string-diff [old new] (diff &(String.words old) &(String.words new)))
+
+  (doc line-diff "Diffs two strings line by line.")
+  (defn line-diff [old new] (diff &(String.lines old) &(String.lines new)))
+
+  (doc char-diff "Diffs two strings character by character.")
+  (defn char-diff [old new] (diff &(String.chars old) &(String.chars new)))
 
   (defn eq? [d] (match @d (Eq _) true _ false))
 
@@ -58,4 +81,184 @@
 
   (defn eq [d] (Array.copy-filter &eq? d))
   (defn insertions [d] (Array.copy-filter &inserted? d))
-  (defn deletions [d] (Array.copy-filter &deleted? d)))
+  (defn deletions [d] (Array.copy-filter &deleted? d))
+
+  (private reorder-changes)
+  (hidden reorder-changes)
+  (defn reorder-changes [raw]
+    (let-do [result (the (Array (Diff (Array String))) [])
+             n (Array.length raw)
+             i 0]
+      (while (< i n)
+        (if (match-ref (Array.unsafe-nth raw i) (Eq _) true _ false)
+          (do
+            (match-ref (Array.unsafe-nth raw i)
+              (Eq ls) (Array.push-back! &result (Eq @ls))
+              _ ())
+            (set! i (Int.inc i)))
+          (let-do [dels (the (Array String) [])
+                   inss (the (Array String) [])]
+            (while-do (and (< i n)
+                           (match-ref (Array.unsafe-nth raw i)
+                             (Eq _) false
+                             _ true))
+              (match-ref (Array.unsafe-nth raw i)
+                (Deletion ls)
+                  (for [j 0 (Array.length ls)]
+                    (Array.push-back! &dels @(Array.unsafe-nth ls j)))
+                (Insertion ls)
+                  (for [j 0 (Array.length ls)]
+                    (Array.push-back! &inss @(Array.unsafe-nth ls j)))
+                _ ())
+              (set! i (Int.inc i)))
+            (when (> (Array.length &dels) 0)
+              (Array.push-back! &result (Deletion dels)))
+            (when (> (Array.length &inss) 0)
+              (Array.push-back! &result (Insertion inss))))))
+      result))
+
+  (private render-hunk-header)
+  (hidden render-hunk-header)
+  (defn render-hunk-header [old-start old-count new-start new-count]
+    (String.concat
+      &[@"@@ -"
+        (str old-start)
+        @","
+        (str old-count)
+        @" +"
+        (str new-start)
+        @","
+        (str new-count)
+        @" @@
+"]))
+
+  (doc unified-diff
+    "Renders a unified diff between two strings with hunk headers.
+Uses 3 lines of context around changes.")
+  (defn unified-diff [old new]
+    (let-do [raw (line-diff old new)
+             d (reorder-changes &raw)
+             n (Array.length &d)
+             context 3
+             result (the (Array String) [])
+             hunk-parts (the (Array String) [])
+             hunk-old-start 0
+             hunk-old-count 0
+             hunk-new-start 0
+             hunk-new-count 0
+             has-changes false
+             old-pos 1
+             new-pos 1
+             pending-ctx (the (Array String) [])]
+      (for [i 0 n]
+        (match-ref (Array.unsafe-nth &d i)
+          (Eq ls)
+            (let [len (Array.length ls)]
+              (if (not has-changes)
+                (do
+                  (set! pending-ctx (Array.suffix ls (max 0 (- len context))))
+                  (set! old-pos (+ old-pos len))
+                  (set! new-pos (+ new-pos len)))
+                (if (> len (* 2 context))
+                  (let-do [trailing (min context len)]
+                    (for [j 0 trailing]
+                      (do
+                        (Array.push-back! &hunk-parts
+                                          (String.concat &[@" "
+                                                           @(Array.unsafe-nth ls
+                                                                              j)
+                                                           @"
+"]))
+                        (set! hunk-old-count (Int.inc hunk-old-count))
+                        (set! hunk-new-count (Int.inc hunk-new-count))))
+                    (Array.push-back! &result
+                                      (render-hunk-header hunk-old-start
+                                                          hunk-old-count
+                                                          hunk-new-start
+                                                          hunk-new-count))
+                    (for [j 0 (Array.length &hunk-parts)]
+                      (Array.push-back! &result
+                                        @(Array.unsafe-nth &hunk-parts j)))
+                    (set! hunk-parts [])
+                    (set! hunk-old-count 0)
+                    (set! hunk-new-count 0)
+                    (set! has-changes false)
+                    (set! pending-ctx (Array.suffix ls (max 0 (- len context))))
+                    (set! old-pos (+ old-pos len))
+                    (set! new-pos (+ new-pos len)))
+                  (do
+                    (for [j 0 len]
+                      (do
+                        (Array.push-back! &hunk-parts
+                                          (String.concat &[@" "
+                                                           @(Array.unsafe-nth ls
+                                                                              j)
+                                                           @"
+"]))
+                        (set! hunk-old-count (Int.inc hunk-old-count))
+                        (set! hunk-new-count (Int.inc hunk-new-count))))
+                    (set! old-pos (+ old-pos len))
+                    (set! new-pos (+ new-pos len))))))
+          (Deletion ls)
+            (let-do [len (Array.length ls)]
+              (unless has-changes
+                (let-do [ctx-len (Array.length &pending-ctx)]
+                  (set! hunk-old-start (- old-pos ctx-len))
+                  (set! hunk-new-start (- new-pos ctx-len))
+                  (for [j 0 ctx-len]
+                    (do
+                      (Array.push-back! &hunk-parts
+                                        (String.concat
+                                          &[@" "
+                                            @(Array.unsafe-nth &pending-ctx j)
+                                            @"
+"]))
+                      (set! hunk-old-count (Int.inc hunk-old-count))
+                      (set! hunk-new-count (Int.inc hunk-new-count))))
+                  (set! pending-ctx [])
+                  (set! has-changes true)))
+              (for [j 0 len]
+                (do
+                  (Array.push-back! &hunk-parts
+                                    (String.concat &[@"-"
+                                                     @(Array.unsafe-nth ls j)
+                                                     @"
+"]))
+                  (set! hunk-old-count (Int.inc hunk-old-count))))
+              (set! old-pos (+ old-pos len)))
+          (Insertion ls)
+            (let-do [len (Array.length ls)]
+              (unless has-changes
+                (let-do [ctx-len (Array.length &pending-ctx)]
+                  (set! hunk-old-start (- old-pos ctx-len))
+                  (set! hunk-new-start (- new-pos ctx-len))
+                  (for [j 0 ctx-len]
+                    (do
+                      (Array.push-back! &hunk-parts
+                                        (String.concat
+                                          &[@" "
+                                            @(Array.unsafe-nth &pending-ctx j)
+                                            @"
+"]))
+                      (set! hunk-old-count (Int.inc hunk-old-count))
+                      (set! hunk-new-count (Int.inc hunk-new-count))))
+                  (set! pending-ctx [])
+                  (set! has-changes true)))
+              (for [j 0 len]
+                (do
+                  (Array.push-back! &hunk-parts
+                                    (String.concat &[@"+"
+                                                     @(Array.unsafe-nth ls j)
+                                                     @"
+"]))
+                  (set! hunk-new-count (Int.inc hunk-new-count))))
+              (set! new-pos (+ new-pos len)))))
+      (when-do has-changes
+        (Array.push-back! &result
+                          (render-hunk-header hunk-old-start
+                                              hunk-old-count
+                                              hunk-new-start
+                                              hunk-new-count))
+        (for [j 0 (Array.length &hunk-parts)]
+          (Array.push-back! &result @(Array.unsafe-nth &hunk-parts j))))
+      (String.concat &result))))

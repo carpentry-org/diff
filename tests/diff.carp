@@ -57,4 +57,168 @@
     (assert-equal test
       &[(Deletion [1 2]) (Eq [3 4])]
       &(diff &[1 2 3 4] &[3 4])
-      "new is a suffix of old")))
+      "new is a suffix of old")
+
+    ; str
+    (assert-equal test "(Eq [1 2 3])" &(str &(Eq [1 2 3])) "str of Eq")
+    (assert-equal test
+      "(Insertion [4 5])"
+      &(str &(Insertion [4 5]))
+      "str of Insertion")
+    (assert-equal test "(Deletion [1])" &(str &(Deletion [1])) "str of Deletion")
+
+    ; prn
+    (assert-equal test
+      "(Eq [@\"hello\" @\"world\"])"
+      &(prn &(Eq [@"hello" @"world"]))
+      "prn of Eq with strings shows quotes")
+
+    ; line-diff
+    (assert-equal test
+      &[(Eq [@"a"]) (Insertion [@"X"]) (Deletion [@"b"]) (Eq [@"c"])]
+      &(line-diff "a
+b
+c" "a
+X
+c")
+      "line-diff splits by newlines")
+    (assert-equal test &[(Eq [@"a" @"b" @"c"])] &(line-diff "a
+b
+c" "a
+b
+c") "line-diff of identical strings")
+
+    ; char-diff
+    (assert-equal test
+      &[(Eq [\h]) (Insertion [\a]) (Deletion [\e]) (Eq [\l \l \o])]
+      &(char-diff "hello" "hallo")
+      "char-diff splits by character")
+
+    ; unified-diff: simple change
+    (assert-equal test "@@ -1,3 +1,3 @@
+ a
+-b
++X
+ c
+" &(unified-diff "a
+b
+c" "a
+X
+c") "unified-diff simple replacement")
+
+    ; unified-diff: identical strings produce empty output
+    (assert-equal test "" &(unified-diff "a
+b
+c" "a
+b
+c") "unified-diff of identical strings is empty")
+
+    ; unified-diff: insertion only
+    (assert-equal test "@@ -1,2 +1,3 @@
+ a
++X
+ b
+" &(unified-diff "a
+b" "a
+X
+b") "unified-diff insertion")
+
+    ; unified-diff: deletion only
+    (assert-equal test "@@ -1,3 +1,2 @@
+ a
+-X
+ b
+" &(unified-diff "a
+X
+b" "a
+b") "unified-diff deletion")
+
+    ; unified-diff: change at start
+    (assert-equal test "@@ -1,4 +1,4 @@
+-X
++Y
+ b
+ c
+ d
+" &(unified-diff "X
+b
+c
+d" "Y
+b
+c
+d") "unified-diff change at start")
+
+    ; unified-diff: change at end
+    (assert-equal test "@@ -1,4 +1,4 @@
+ a
+ b
+ c
+-X
++Y
+" &(unified-diff "a
+b
+c
+X" "a
+b
+c
+Y") "unified-diff change at end")
+
+    ; unified-diff: completely different
+    (assert-equal test "@@ -1,3 +1,3 @@
+-a
+-b
+-c
++X
++Y
++Z
+" &(unified-diff "a
+b
+c" "X
+Y
+Z") "unified-diff completely different")
+
+    ; unified-diff: two hunks (changes > 2*context apart)
+    (assert-equal test "@@ -1,6 +1,6 @@
+ 1
+ 2
+-3
++X
+ 4
+ 5
+ 6
+@@ -11,5 +11,5 @@
+ 11
+ 12
+ 13
+-14
++Y
+ 15
+" &(unified-diff "1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15" "1
+2
+X
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+Y
+15") "unified-diff two hunks")))
