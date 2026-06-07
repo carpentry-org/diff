@@ -11,6 +11,8 @@
       (Deletion x) (match @b (Deletion y) (= &x &y) _ false)))
   (implements = Diff.=)
 
+  (doc diff
+    "Computes the diff between two arrays, returning a sequence of Eq, Insertion, and Deletion hunks.")
   (defn diff [old new]
     (let-do [oidxm {}
              overlap {}
@@ -48,6 +50,7 @@
                 [(Eq (Array.slice new ssn (+ ssn sl)))]])
             (diff &(Array.suffix old (+ sso sl)) &(Array.suffix new (+ ssn sl)))]))))
 
+  (doc string-diff "Diffs two strings word by word, splitting on whitespace.")
   (defn string-diff [old new] (diff &(String.words old) &(String.words new)))
 
   (doc line-diff "Diffs two strings line by line, splitting on newlines.")
@@ -57,15 +60,43 @@
   (doc char-diff "Diffs two strings character by character.")
   (defn char-diff [old new] (diff &(String.chars old) &(String.chars new)))
 
+  (doc eq? "Returns true if the diff hunk is an Eq.")
   (defn eq? [d] (match @d (Eq _) true _ false))
 
+  (doc inserted? "Returns true if the diff hunk is an Insertion.")
   (defn inserted? [d] (match @d (Insertion _) true _ false))
 
+  (doc deleted? "Returns true if the diff hunk is a Deletion.")
   (defn deleted? [d] (match @d (Deletion _) true _ false))
 
+  (doc eq "Filters a diff to only the Eq hunks.")
   (defn eq [d] (Array.copy-filter &eq? d))
+  (doc insertions "Filters a diff to only the Insertion hunks.")
   (defn insertions [d] (Array.copy-filter &inserted? d))
+  (doc deletions "Filters a diff to only the Deletion hunks.")
   (defn deletions [d] (Array.copy-filter &deleted? d))
+
+  (doc apply
+    "Reconstructs the 'new' array from a diff by collecting Eq and Insertion elements.")
+  (defn apply [d]
+    (let-do [res []]
+      (for [i 0 (Array.length d)]
+        (match-ref (Array.unsafe-nth d i)
+          (Eq xs) (set! res (Array.concat &[res (Array.copy xs)]))
+          (Insertion xs) (set! res (Array.concat &[res (Array.copy xs)]))
+          (Deletion _) ()))
+      res))
+
+  (doc revert
+    "Reconstructs the 'old' array from a diff by collecting Eq and Deletion elements.")
+  (defn revert [d]
+    (let-do [res []]
+      (for [i 0 (Array.length d)]
+        (match-ref (Array.unsafe-nth d i)
+          (Eq xs) (set! res (Array.concat &[res (Array.copy xs)]))
+          (Insertion _) ()
+          (Deletion xs) (set! res (Array.concat &[res (Array.copy xs)]))))
+      res))
 
   (defn- emit-hunk [output old-start old-count new-start new-count hunk-lines]
     (let [header (String.concat

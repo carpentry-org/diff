@@ -59,6 +59,58 @@
       &(diff &[1 2 3 4] &[3 4])
       "new is a suffix of old")
 
+    ; apply tests
+    (assert-equal test
+      &[1 2 3]
+      &(Diff.apply &(diff &[1 2 3] &[1 2 3]))
+      "apply on equal arrays returns the same array")
+    (assert-equal test
+      &[1 2 3]
+      &(Diff.apply &(diff &[1 4 3] &[1 2 3]))
+      "apply reconstructs the new array")
+    (assert-equal test
+      &(the (Array Int) [])
+      &(Diff.apply &(diff &[1 2 3] &[]))
+      "apply on all-deletion diff returns empty")
+    (assert-equal test
+      &[1 2 3]
+      &(Diff.apply &(diff &[] &[1 2 3]))
+      "apply on all-insertion diff returns the inserted elements")
+    (assert-equal test
+      &(the (Array Int) [])
+      &(Diff.apply &(diff &[] &(the (Array Int) [])))
+      "apply on empty diff returns empty")
+    (assert-equal test
+      &[1 2 3 4]
+      &(Diff.apply &(diff &[1 2] &[1 2 3 4]))
+      "apply with appended elements")
+
+    ; revert tests
+    (assert-equal test
+      &[1 2 3]
+      &(Diff.revert &(diff &[1 2 3] &[1 2 3]))
+      "revert on equal arrays returns the same array")
+    (assert-equal test
+      &[1 4 3]
+      &(Diff.revert &(diff &[1 4 3] &[1 2 3]))
+      "revert reconstructs the old array")
+    (assert-equal test
+      &[1 2 3]
+      &(Diff.revert &(diff &[1 2 3] &[]))
+      "revert on all-deletion diff returns the deleted elements")
+    (assert-equal test
+      &(the (Array Int) [])
+      &(Diff.revert &(diff &[] &[1 2 3]))
+      "revert on all-insertion diff returns empty")
+    (assert-equal test
+      &(the (Array Int) [])
+      &(Diff.revert &(diff &[] &(the (Array Int) [])))
+      "revert on empty diff returns empty")
+    (assert-equal test
+      &[1 2 3 4]
+      &(Diff.revert &(diff &[1 2 3 4] &[1 2]))
+      "revert with removed suffix")
+
     ; line-diff tests
     (assert-equal test
       &[(Eq [@"a"]) (Insertion [@"new"]) (Deletion [@"old"]) (Eq [@"b"])]
