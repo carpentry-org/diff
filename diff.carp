@@ -76,14 +76,17 @@
   (doc deletions "Filters a diff to only the Deletion hunks.")
   (defn deletions [d] (Array.copy-filter &deleted? d))
 
+  (defn- push-all! [res xs]
+    (for [j 0 (Array.length xs)] (Array.push-back! res @(Array.unsafe-nth xs j))))
+
   (doc apply
     "Reconstructs the 'new' array from a diff by collecting Eq and Insertion elements.")
   (defn apply [d]
     (let-do [res []]
       (for [i 0 (Array.length d)]
         (match-ref (Array.unsafe-nth d i)
-          (Eq xs) (set! res (Array.concat &[res (Array.copy xs)]))
-          (Insertion xs) (set! res (Array.concat &[res (Array.copy xs)]))
+          (Eq xs) (push-all! &res xs)
+          (Insertion xs) (push-all! &res xs)
           (Deletion _) ()))
       res))
 
@@ -93,10 +96,34 @@
     (let-do [res []]
       (for [i 0 (Array.length d)]
         (match-ref (Array.unsafe-nth d i)
-          (Eq xs) (set! res (Array.concat &[res (Array.copy xs)]))
+          (Eq xs) (push-all! &res xs)
           (Insertion _) ()
-          (Deletion xs) (set! res (Array.concat &[res (Array.copy xs)]))))
+          (Deletion xs) (push-all! &res xs)))
       res))
+
+  (doc lcs-length
+    "Returns the length of the longest common subsequence of two arrays.")
+  (defn lcs-length [old new]
+    (let-do [d &(diff old new)
+             len 0]
+      (for [i 0 (Array.length d)]
+        (match-ref (Array.unsafe-nth d i)
+          (Eq xs) (set! len (+ len (Array.length xs)))
+          _ ()))
+      len))
+
+  (doc edit-distance
+    "Returns the edit distance (number of insertions plus deletions) between two arrays.")
+  (defn edit-distance [old new]
+    (- (+ (Array.length old) (Array.length new)) (* 2 (lcs-length old new))))
+
+  (doc similarity
+    "Returns a similarity ratio between 0.0 and 1.0 for two arrays, based on their longest common subsequence. Two empty arrays have similarity 1.0.")
+  (defn similarity [old new]
+    (let [total (+ (Array.length old) (Array.length new))]
+      (if (= total 0)
+        1.0
+        (/ (Double.from-int (* 2 (lcs-length old new))) (Double.from-int total)))))
 
   (defn- emit-hunk [output old-start old-count new-start new-count hunk-lines]
     (let [header (String.concat

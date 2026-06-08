@@ -246,4 +246,74 @@ g
 h
 i
 j
-KK")) "unified generates multiple hunks for distant changes")))
+KK")) "unified generates multiple hunks for distant changes")
+
+    ; lcs-length tests
+    (assert-equal test
+      3
+      (Diff.lcs-length &[1 2 3] &[1 2 3])
+      "lcs-length of identical arrays is their length")
+    (assert-equal test
+      2
+      (Diff.lcs-length &[1 4 3] &[1 2 3])
+      "lcs-length of partially matching arrays")
+    (assert-equal test
+      0
+      (Diff.lcs-length &[1 2 3] &[4 5 6])
+      "lcs-length of completely different arrays is 0")
+    (assert-equal test
+      0
+      (Diff.lcs-length &[] &(the (Array Int) []))
+      "lcs-length of two empty arrays is 0")
+    (assert-equal test
+      0
+      (Diff.lcs-length &[] &[1 2 3])
+      "lcs-length with one empty array is 0")
+    (assert-equal test
+      2
+      (Diff.lcs-length &[1 2] &[1 2 3 4])
+      "lcs-length when one is prefix of other")
+
+    ; edit-distance tests
+    (assert-equal test
+      0
+      (Diff.edit-distance &[1 2 3] &[1 2 3])
+      "edit-distance of identical arrays is 0")
+    (assert-equal test
+      2
+      (Diff.edit-distance &[1 4 3] &[1 2 3])
+      "edit-distance with one substitution is 2 (delete + insert)")
+    (assert-equal test
+      6
+      (Diff.edit-distance &[1 2 3] &[4 5 6])
+      "edit-distance of completely different arrays")
+    (assert-equal test
+      0
+      (Diff.edit-distance &[] &(the (Array Int) []))
+      "edit-distance of two empty arrays is 0")
+    (assert-equal test
+      3
+      (Diff.edit-distance &[] &[1 2 3])
+      "edit-distance with one empty array")
+    (assert-equal test
+      2
+      (Diff.edit-distance &[1 2] &[1 2 3 4])
+      "edit-distance when one is prefix of other")
+
+    ; similarity tests
+    (assert-equal test
+      1.0
+      (Diff.similarity &[1 2 3] &[1 2 3])
+      "similarity of identical arrays is 1.0")
+    (assert-equal test
+      0.0
+      (Diff.similarity &[1 2 3] &[4 5 6])
+      "similarity of completely different arrays is 0.0")
+    (assert-equal test
+      1.0
+      (Diff.similarity &[] &(the (Array Int) []))
+      "similarity of two empty arrays is 1.0")
+    (assert-equal test
+      0.0
+      (Diff.similarity &[] &[1 2 3])
+      "similarity with one empty array is 0.0")))
