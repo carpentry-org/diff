@@ -85,6 +85,45 @@
       &(Diff.apply &(diff &[1 2] &[1 2 3 4]))
       "apply with appended elements")
 
+    ; apply/revert on hand-built mixed diffs — demonstrates
+    ; reconstructing either side from the diff structure alone
+    (assert-equal test
+      &[1 2 10 20 4 30]
+      &(Diff.apply
+        &[(Eq [1 2])
+          (Insertion [10 20])
+          (Deletion [3])
+          (Eq [4])
+          (Deletion [5 6])
+          (Insertion [30])])
+      "apply on mixed diff collects Eq+Insertion, skips Deletion")
+    (assert-equal test
+      &[1 2 3 4 5 6]
+      &(Diff.revert
+        &[(Eq [1 2])
+          (Insertion [10 20])
+          (Deletion [3])
+          (Eq [4])
+          (Deletion [5 6])
+          (Insertion [30])])
+      "revert on mixed diff collects Eq+Deletion, skips Insertion")
+    (assert-equal test
+      &[@"hello" @"brave" @"new" @"world"]
+      &(Diff.apply
+        &[(Eq [@"hello"])
+          (Deletion [@"cruel" @"old"])
+          (Insertion [@"brave" @"new"])
+          (Eq [@"world"])])
+      "apply on string mixed diff reconstructs the new side")
+    (assert-equal test
+      &[@"hello" @"cruel" @"old" @"world"]
+      &(Diff.revert
+        &[(Eq [@"hello"])
+          (Deletion [@"cruel" @"old"])
+          (Insertion [@"brave" @"new"])
+          (Eq [@"world"])])
+      "revert on string mixed diff reconstructs the old side")
+
     ; revert tests
     (assert-equal test
       &[1 2 3]
