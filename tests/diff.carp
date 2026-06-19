@@ -59,7 +59,6 @@
       &(diff &[1 2 3 4] &[3 4])
       "new is a suffix of old")
 
-    ; apply tests
     (assert-equal test
       &[1 2 3]
       &(Diff.apply &(diff &[1 2 3] &[1 2 3]))
@@ -85,8 +84,8 @@
       &(Diff.apply &(diff &[1 2] &[1 2 3 4]))
       "apply with appended elements")
 
-    ; apply/revert on hand-built mixed diffs — demonstrates
-    ; reconstructing either side from the diff structure alone
+    ; hand-built mixed diffs: reconstructing either side from the diff
+    ; structure alone, independent of the diff algorithm
     (assert-equal test
       &[1 2 10 20 4 30]
       &(Diff.apply
@@ -124,7 +123,6 @@
           (Eq [@"world"])])
       "revert on string mixed diff reconstructs the old side")
 
-    ; revert tests
     (assert-equal test
       &[1 2 3]
       &(Diff.revert &(diff &[1 2 3] &[1 2 3]))
@@ -150,7 +148,6 @@
       &(Diff.revert &(diff &[1 2 3 4] &[1 2]))
       "revert with removed suffix")
 
-    ; line-diff tests
     (assert-equal test
       &[(Eq [@"a"]) (Insertion [@"new"]) (Deletion [@"old"]) (Eq [@"b"])]
       &(line-diff "a
@@ -163,7 +160,6 @@ b")
 lines" "same
 lines")) "line-diff of identical strings is all equal")
 
-    ; char-diff tests
     (assert-equal test
       &[(Eq [\a]) (Insertion [\x]) (Deletion [\b]) (Eq [\c])]
       &(char-diff "abc" "axc")
@@ -173,7 +169,6 @@ lines")) "line-diff of identical strings is all equal")
       &(Diff.eq &(char-diff "hello" "hello"))
       "char-diff of identical strings is all equal")
 
-    ; unified tests
     (assert-equal test &(String.concat &[@"@@ -1,3 +1,3 @@
 " @" line1
 " @"+changed
@@ -248,7 +243,6 @@ i
 j
 KK")) "unified generates multiple hunks for distant changes")
 
-    ; lcs-length tests
     (assert-equal test
       3
       (Diff.lcs-length &[1 2 3] &[1 2 3])
@@ -274,7 +268,6 @@ KK")) "unified generates multiple hunks for distant changes")
       (Diff.lcs-length &[1 2] &[1 2 3 4])
       "lcs-length when one is prefix of other")
 
-    ; edit-distance tests
     (assert-equal test
       0
       (Diff.edit-distance &[1 2 3] &[1 2 3])
@@ -300,7 +293,6 @@ KK")) "unified generates multiple hunks for distant changes")
       (Diff.edit-distance &[1 2] &[1 2 3 4])
       "edit-distance when one is prefix of other")
 
-    ; similarity tests
     (assert-equal test
       1.0
       (Diff.similarity &[1 2 3] &[1 2 3])

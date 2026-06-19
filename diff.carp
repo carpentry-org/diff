@@ -214,7 +214,7 @@ Uses 3 lines of context around changes.")
               (set! new-pos (+ new-pos n)))
           (Deletion lines)
             (let-do [n (Array.length lines)]
-              (when-do (not in-hunk)
+              (unless-do in-hunk
                 (set! in-hunk true)
                 (set! hunk-lines (Array.copy &lead-lines))
                 (set! hunk-old-start lead-old-start)
@@ -230,7 +230,7 @@ Uses 3 lines of context around changes.")
               (set! old-pos (+ old-pos n)))
           (Insertion lines)
             (let-do [n (Array.length lines)]
-              (when-do (not in-hunk)
+              (unless-do in-hunk
                 (set! in-hunk true)
                 (set! hunk-lines (Array.copy &lead-lines))
                 (set! hunk-old-start lead-old-start)
