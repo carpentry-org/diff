@@ -11,6 +11,20 @@
       (Deletion x) (match @b (Deletion y) (= &x &y) _ false)))
   (implements = Diff.=)
 
+  (defn str [d]
+    (match-ref d
+      (Eq x) (String.concat &[@"(Eq " (str x) @")"])
+      (Insertion x) (String.concat &[@"(Insertion " (str x) @")"])
+      (Deletion x) (String.concat &[@"(Deletion " (str x) @")"])))
+  (implements str Diff.str)
+
+  (defn prn [d]
+    (match-ref d
+      (Eq x) (String.concat &[@"(Eq " (prn x) @")"])
+      (Insertion x) (String.concat &[@"(Insertion " (prn x) @")"])
+      (Deletion x) (String.concat &[@"(Deletion " (prn x) @")"])))
+  (implements prn Diff.prn)
+
   (doc diff
     "Computes the diff between two arrays, returning a sequence of Eq, Insertion, and Deletion hunks.")
   (defn diff [old new]
@@ -125,7 +139,9 @@
         1.0
         (/ (Double.from-int (* 2 (lcs-length old new))) (Double.from-int total)))))
 
-  (defn- emit-hunk [output old-start old-count new-start new-count hunk-lines]
+  (defn- change? [d] (match-ref d (Eq _) false _ true))
+
+  (defn- format-hunk [old-start old-count new-start new-count hunk-lines]
     (let [header (String.concat
             &[@"@@ -"
               (Int.str old-start)
@@ -138,16 +154,16 @@
               @" @@"])
           body (String.join "
 " hunk-lines)]
-      (String.concat &[output header @"
+      (String.concat &[header @"
 " body @"
 "])))
 
-  (doc unified "Renders a line diff in unified diff format with hunk headers.
+  (doc unified-with-context
+    "Renders a line diff in unified diff format with hunk headers.
 Expects the output of `line-diff` or a diff of string arrays.
-Uses 3 lines of context around changes.")
-  (defn unified [d]
-    (let-do [ctx 3
-             old-pos 1
+Uses the given number of context lines around changes.")
+  (defn unified-with-context [d ctx]
+    (let-do [old-pos 1
              new-pos 1
              hunk-lines (the (Array String) [])
              hunk-old-start 1
@@ -159,97 +175,92 @@ Uses 3 lines of context around changes.")
              lead-old-start 1
              lead-new-start 1
              lead-count 0
-             result @""]
+             hunks (the (Array String) [])]
       (for [i 0 (Array.length d)]
-        (match-ref (Array.unsafe-nth d i)
-          (Eq lines)
-            (let-do [n (Array.length lines)]
-              (if in-hunk
-                (if (<= n (* 2 ctx))
-                  (for [j 0 n]
-                    (let-do [line (Array.unsafe-nth lines j)]
-                      (Array.push-back! &hunk-lines
-                                        (String.concat &[@" " @line]))
-                      (set! hunk-old-count (+ hunk-old-count 1))
-                      (set! hunk-new-count (+ hunk-new-count 1))))
-                  (let-do [trailing (Int.min ctx n)]
-                    (for [j 0 trailing]
+        (let-do [elem (Array.unsafe-nth d i)]
+          (when-do (and (not in-hunk) (change? elem))
+            (set! in-hunk true)
+            (set! hunk-lines (Array.copy &lead-lines))
+            (set! hunk-old-start lead-old-start)
+            (set! hunk-new-start lead-new-start)
+            (set! hunk-old-count lead-count)
+            (set! hunk-new-count lead-count)
+            (set! lead-lines [])
+            (set! lead-count 0))
+          (match-ref elem
+            (Eq lines)
+              (let-do [n (Array.length lines)]
+                (if in-hunk
+                  (if (<= n (* 2 ctx))
+                    (for [j 0 n]
                       (let-do [line (Array.unsafe-nth lines j)]
                         (Array.push-back! &hunk-lines
                                           (String.concat &[@" " @line]))
                         (set! hunk-old-count (+ hunk-old-count 1))
                         (set! hunk-new-count (+ hunk-new-count 1))))
-                    (set! result
-                          (emit-hunk result
-                                     hunk-old-start
-                                     hunk-old-count
-                                     hunk-new-start
-                                     hunk-new-count
-                                     &hunk-lines))
-                    (set! in-hunk false)
-                    (set! hunk-lines [])
-                    (let-do [leading (Int.min ctx (- n trailing))
-                             lead-start (- n leading)]
-                      (set! lead-lines [])
-                      (set! lead-count 0)
-                      (set! lead-old-start (+ old-pos lead-start))
-                      (set! lead-new-start (+ new-pos lead-start))
-                      (for [j lead-start n]
+                    (let-do [trailing (Int.min ctx n)]
+                      (for [j 0 trailing]
                         (let-do [line (Array.unsafe-nth lines j)]
-                          (Array.push-back! &lead-lines
+                          (Array.push-back! &hunk-lines
                                             (String.concat &[@" " @line]))
-                          (set! lead-count (+ lead-count 1)))))))
-                (let-do [leading (Int.min ctx n)
-                         lead-start (- n leading)]
-                  (set! lead-lines [])
-                  (set! lead-count 0)
-                  (set! lead-old-start (+ old-pos lead-start))
-                  (set! lead-new-start (+ new-pos lead-start))
-                  (for [j lead-start n]
-                    (let-do [line (Array.unsafe-nth lines j)]
-                      (Array.push-back! &lead-lines
-                                        (String.concat &[@" " @line]))
-                      (set! lead-count (+ lead-count 1))))))
-              (set! old-pos (+ old-pos n))
-              (set! new-pos (+ new-pos n)))
-          (Deletion lines)
-            (let-do [n (Array.length lines)]
-              (unless-do in-hunk
-                (set! in-hunk true)
-                (set! hunk-lines (Array.copy &lead-lines))
-                (set! hunk-old-start lead-old-start)
-                (set! hunk-new-start lead-new-start)
-                (set! hunk-old-count lead-count)
-                (set! hunk-new-count lead-count)
-                (set! lead-lines [])
-                (set! lead-count 0))
-              (for [j 0 n]
-                (let-do [line (Array.unsafe-nth lines j)]
-                  (Array.push-back! &hunk-lines (String.concat &[@"-" @line]))
-                  (set! hunk-old-count (+ hunk-old-count 1))))
-              (set! old-pos (+ old-pos n)))
-          (Insertion lines)
-            (let-do [n (Array.length lines)]
-              (unless-do in-hunk
-                (set! in-hunk true)
-                (set! hunk-lines (Array.copy &lead-lines))
-                (set! hunk-old-start lead-old-start)
-                (set! hunk-new-start lead-new-start)
-                (set! hunk-old-count lead-count)
-                (set! hunk-new-count lead-count)
-                (set! lead-lines [])
-                (set! lead-count 0))
-              (for [j 0 n]
-                (let-do [line (Array.unsafe-nth lines j)]
-                  (Array.push-back! &hunk-lines (String.concat &[@"+" @line]))
-                  (set! hunk-new-count (+ hunk-new-count 1))))
-              (set! new-pos (+ new-pos n)))))
+                          (set! hunk-old-count (+ hunk-old-count 1))
+                          (set! hunk-new-count (+ hunk-new-count 1))))
+                      (Array.push-back! &hunks
+                                        (format-hunk hunk-old-start
+                                                     hunk-old-count
+                                                     hunk-new-start
+                                                     hunk-new-count
+                                                     &hunk-lines))
+                      (set! in-hunk false)
+                      (set! hunk-lines [])
+                      (let-do [leading (Int.min ctx (- n trailing))
+                               lead-start (- n leading)]
+                        (set! lead-lines [])
+                        (set! lead-count 0)
+                        (set! lead-old-start (+ old-pos lead-start))
+                        (set! lead-new-start (+ new-pos lead-start))
+                        (for [j lead-start n]
+                          (let-do [line (Array.unsafe-nth lines j)]
+                            (Array.push-back! &lead-lines
+                                              (String.concat &[@" " @line]))
+                            (set! lead-count (+ lead-count 1)))))))
+                  (let-do [leading (Int.min ctx n)
+                           lead-start (- n leading)]
+                    (set! lead-lines [])
+                    (set! lead-count 0)
+                    (set! lead-old-start (+ old-pos lead-start))
+                    (set! lead-new-start (+ new-pos lead-start))
+                    (for [j lead-start n]
+                      (let-do [line (Array.unsafe-nth lines j)]
+                        (Array.push-back! &lead-lines
+                                          (String.concat &[@" " @line]))
+                        (set! lead-count (+ lead-count 1))))))
+                (set! old-pos (+ old-pos n))
+                (set! new-pos (+ new-pos n)))
+            (Deletion lines)
+              (let-do [n (Array.length lines)]
+                (for [j 0 n]
+                  (let-do [line (Array.unsafe-nth lines j)]
+                    (Array.push-back! &hunk-lines (String.concat &[@"-" @line]))
+                    (set! hunk-old-count (+ hunk-old-count 1))))
+                (set! old-pos (+ old-pos n)))
+            (Insertion lines)
+              (let-do [n (Array.length lines)]
+                (for [j 0 n]
+                  (let-do [line (Array.unsafe-nth lines j)]
+                    (Array.push-back! &hunk-lines (String.concat &[@"+" @line]))
+                    (set! hunk-new-count (+ hunk-new-count 1))))
+                (set! new-pos (+ new-pos n))))))
       (when in-hunk
-        (set! result
-              (emit-hunk result
-                         hunk-old-start
-                         hunk-old-count
-                         hunk-new-start
-                         hunk-new-count
-                         &hunk-lines)))
-      result)))
+        (Array.push-back! &hunks
+                          (format-hunk hunk-old-start
+                                       hunk-old-count
+                                       hunk-new-start
+                                       hunk-new-count
+                                       &hunk-lines)))
+      (String.concat &hunks)))
+
+  (doc unified "Renders a line diff in unified diff format with hunk headers.
+Expects the output of `line-diff` or a diff of string arrays.
+Uses 3 lines of context around changes.")
+  (defn unified [d] (unified-with-context d 3)))
