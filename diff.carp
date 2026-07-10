@@ -263,4 +263,72 @@ Uses the given number of context lines around changes.")
   (doc unified "Renders a line diff in unified diff format with hunk headers.
 Expects the output of `line-diff` or a diff of string arrays.
 Uses 3 lines of context around changes.")
-  (defn unified [d] (unified-with-context d 3)))
+  (defn unified [d] (unified-with-context d 3))
+
+  ; parses the 1-based old-file start line from a unified hunk header such as
+  ; `@@ -3,4 +3,5 @@`; the count is optional (`@@ -3 +3 @@` means one line).
+  (defn- parse-hunk-start [header]
+    (let-do [tokens (String.split-by header &[\space])
+             res (the (Maybe Int) (Maybe.Nothing))]
+      (for [i 0 (Array.length &tokens)]
+        (let [tok (Array.unsafe-nth &tokens i)]
+          (when (and (Maybe.nothing? &res)
+                     (String.starts-with? tok "-")
+                     (> (String.length tok) 1))
+            (let [range (String.suffix tok 1)]
+              (set! res
+                    (Int.from-string
+                      (Array.unsafe-nth &(String.split-by &range &[\,]) 0)))))))
+      res))
+
+  (doc patch
+    "Applies a unified diff `patch-text` (as produced by `unified`) to the
+original document `original`, returning the patched document. Context and
+deletion lines are checked against `original`, so this is a safe applier:
+it returns `Nothing` if the patch does not apply — a context or deletion
+line that does not match, or a hunk header that is malformed, out of range,
+or out of order. Both documents are split and rejoined on newlines, so
+`(patch old (unified (line-diff old new)))` reproduces `new`.")
+  (defn patch [original patch-text]
+    (let-do [orig (String.split-by original &[\newline])
+             lines (String.split-by patch-text &[\newline])
+             out (the (Array String) [])
+             olen (Array.length &orig)
+             cursor 0
+             failed false]
+      (for [i 0 (Array.length &lines)]
+        (unless failed
+          (let [line (Array.unsafe-nth &lines i)]
+            (cond
+              (String.starts-with? line "@@")
+                (match (parse-hunk-start line)
+                  (Maybe.Nothing) (set! failed true)
+                  (Maybe.Just start)
+                    (let [target (if (< start 1) 0 (Int.dec start))]
+                      (if (or (< target cursor) (> target olen))
+                        (set! failed true)
+                        (do
+                          (for [k cursor target]
+                            (Array.push-back! &out @(Array.unsafe-nth &orig k)))
+                          (set! cursor target)))))
+              (String.starts-with? line " ")
+                (let [content (String.suffix line 1)]
+                  (if (or (>= cursor olen)
+                          (/= (Array.unsafe-nth &orig cursor) &content))
+                    (set! failed true)
+                    (do
+                      (Array.push-back! &out content)
+                      (set! cursor (Int.inc cursor)))))
+              (String.starts-with? line "-")
+                (let [content (String.suffix line 1)]
+                  (if (or (>= cursor olen)
+                          (/= (Array.unsafe-nth &orig cursor) &content))
+                    (set! failed true)
+                    (set! cursor (Int.inc cursor))))
+              (String.starts-with? line "+")
+                (Array.push-back! &out (String.suffix line 1))
+              ()))))
+      (unless failed
+        (for [k cursor olen] (Array.push-back! &out @(Array.unsafe-nth &orig k))))
+      (if failed (Maybe.Nothing) (Maybe.Just (String.join "
+" &out))))))

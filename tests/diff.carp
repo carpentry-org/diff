@@ -378,4 +378,124 @@ c
 d
 e
 FF
-g") 1) "unified-with-context 1 splits hunks with enough gap")))
+g") 1) "unified-with-context 1 splits hunks with enough gap")
+
+    ; patch — apply a unified diff to an original document
+    (assert-equal test &(Maybe.Just @"line1
+changed
+line3") &(patch "line1
+line2
+line3" &(unified &(line-diff "line1
+line2
+line3" "line1
+changed
+line3"))) "patch round-trips a single-hunk change in the middle")
+    (assert-equal test &(Maybe.Just @"new
+a
+b
+c") &(patch "old
+a
+b
+c" &(unified &(line-diff "old
+a
+b
+c" "new
+a
+b
+c"))) "patch round-trips a change at the start")
+    (assert-equal test &(Maybe.Just @"a
+b
+c
+new") &(patch "a
+b
+c
+old" &(unified &(line-diff "a
+b
+c
+old" "a
+b
+c
+new"))) "patch round-trips a change at the end")
+    (assert-equal test &(Maybe.Just @"a
+BB
+c
+d
+e
+f
+g
+h
+i
+j
+KK") &(patch "a
+b
+c
+d
+e
+f
+g
+h
+i
+j
+k" &(unified &(line-diff "a
+b
+c
+d
+e
+f
+g
+h
+i
+j
+k" "a
+BB
+c
+d
+e
+f
+g
+h
+i
+j
+KK"))) "patch round-trips multiple hunks, copying the untouched gap")
+    (assert-equal test &(Maybe.Just @"a
+X
+Y
+b") &(patch "a
+b" &(unified &(line-diff "a
+b" "a
+X
+Y
+b"))) "patch round-trips a pure insertion")
+    (assert-equal test &(Maybe.Just @"a
+b") &(patch "a
+X
+Y
+b" &(unified &(line-diff "a
+X
+Y
+b" "a
+b"))) "patch round-trips a pure deletion")
+    (assert-equal test &(Maybe.Just @"same
+text") &(patch "same
+text" &(unified &(line-diff "same
+text" "same
+text"))) "patch on an empty diff returns the original unchanged")
+    (assert-equal test &(Maybe.Just @"a
+B
+c") &(patch "a
+b
+c" "@@ -2 +2 @@
+-b
++B
+") "patch accepts a count-omitted hunk header (@@ -2 +2 @@)")
+    (assert-equal test &(the (Maybe String) (Maybe.Nothing)) &(patch "x
+y
+z" &(unified &(line-diff "a
+b
+c" "a
+B
+c"))) "patch returns Nothing when a context line does not match the original")
+    (assert-equal test &(the (Maybe String) (Maybe.Nothing)) &(patch "a
+b" "@@ garbage @@
+ a
+") "patch returns Nothing on a malformed hunk header")))
