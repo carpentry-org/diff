@@ -300,7 +300,8 @@ or out of order. Both documents are split and rejoined on newlines, so
         (unless failed
           (let [line (Array.unsafe-nth &lines i)]
             (cond
-              (String.starts-with? line "@@")
+              (and (>= (String.length line) 2)
+                   (= "@@" &(String.byte-slice line 0 2)))
                 (match (parse-hunk-start line)
                   (Maybe.Nothing) (set! failed true)
                   (Maybe.Just start)

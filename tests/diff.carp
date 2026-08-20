@@ -498,4 +498,10 @@ c"))) "patch returns Nothing when a context line does not match the original")
     (assert-equal test &(the (Maybe String) (Maybe.Nothing)) &(patch "a
 b" "@@ garbage @@
  a
-") "patch returns Nothing on a malformed hunk header")))
+") "patch returns Nothing on a malformed hunk header")
+    (assert-equal test &(Maybe.Just @"a
+b") &(patch "a
+b" "@@ -1,2 +1,2 @@
+ a
+é
+ b") "patch does not abort on a line that is a single multi-byte character")))
