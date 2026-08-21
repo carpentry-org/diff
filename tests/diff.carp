@@ -4,6 +4,9 @@
 
 (use-all Diff Test)
 
+; 0xBB is `»` in latin-1: one byte, zero utf-8 characters
+(defn latin1-raquo [] (String.from-bytes &[187b]))
+
 (defn main []
   (with-test test
     (assert-equal test
@@ -498,4 +501,30 @@ c"))) "patch returns Nothing when a context line does not match the original")
     (assert-equal test &(the (Maybe String) (Maybe.Nothing)) &(patch "a
 b" "@@ garbage @@
  a
-") "patch returns Nothing on a malformed hunk header")))
+") "patch returns Nothing on a malformed hunk header")
+    (assert-equal test &(Maybe.Just @"a
+b") &(patch "a
+b" "@@ -1,2 +1,2 @@
+ a
+é
+ b") "patch does not abort on a line that is a single multi-byte character")
+    (assert-equal test &(Maybe.Just @"a
+b") &(patch "a
+b" &(String.concat &[@"@@ -1,2 +1,2 @@
+ a
+" (latin1-raquo) @"
+ b"])) "patch does not abort on a body line that is a single continuation byte")
+    (assert-equal test &(the (Maybe String) (Maybe.Nothing)) &(patch "a
+b" &(String.concat &[@"@@ " (latin1-raquo) @" @@
+ a
+"])) "patch does not abort on a continuation byte in the hunk header")
+    (assert-equal test &(Maybe.Just (String.concat &[(latin1-raquo) @"
+b"])) &(patch &(String.concat &[(latin1-raquo) @"
+b"]) &(String.concat &[@"@@ -1,2 +1,2 @@
+ " (latin1-raquo) @"
+ b"])) "patch applies a no-op patch to a latin-1 document")
+    (assert-equal test &(Maybe.Just (String.concat &[(latin1-raquo) @"
+B"])) &(patch &(String.concat &[(latin1-raquo) @"
+b"]) &(unified &(line-diff &(String.concat &[(latin1-raquo) @"
+b"]) &(String.concat &[(latin1-raquo) @"
+B"])))) "patch round-trips a diff of a latin-1 document")))

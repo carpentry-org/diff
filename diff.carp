@@ -265,6 +265,13 @@ Expects the output of `line-diff` or a diff of string arrays.
 Uses 3 lines of context around changes.")
   (defn unified [d] (unified-with-context d 3))
 
+  ; core's starts-with?/suffix guard on byte length but index characters; patch input is bytes
+  (defn- byte-starts-with? [s sub]
+    (let [ls (String.length sub)]
+      (and (>= (String.length s) ls) (= sub &(String.byte-slice s 0 ls)))))
+
+  (defn- byte-suffix [s b] (String.byte-slice s b (String.length s)))
+
   ; parses the 1-based old-file start line from a unified hunk header such as
   ; `@@ -3,4 +3,5 @@`; the count is optional (`@@ -3 +3 @@` means one line).
   (defn- parse-hunk-start [header]
@@ -273,9 +280,9 @@ Uses 3 lines of context around changes.")
       (for [i 0 (Array.length &tokens)]
         (let [tok (Array.unsafe-nth &tokens i)]
           (when (and (Maybe.nothing? &res)
-                     (String.starts-with? tok "-")
+                     (byte-starts-with? tok "-")
                      (> (String.length tok) 1))
-            (let [range (String.suffix tok 1)]
+            (let [range (byte-suffix tok 1)]
               (set! res
                     (Int.from-string
                       (Array.unsafe-nth &(String.split-by &range &[\,]) 0)))))))
@@ -300,7 +307,7 @@ or out of order. Both documents are split and rejoined on newlines, so
         (unless failed
           (let [line (Array.unsafe-nth &lines i)]
             (cond
-              (String.starts-with? line "@@")
+              (byte-starts-with? line "@@")
                 (match (parse-hunk-start line)
                   (Maybe.Nothing) (set! failed true)
                   (Maybe.Just start)
@@ -311,22 +318,22 @@ or out of order. Both documents are split and rejoined on newlines, so
                           (for [k cursor target]
                             (Array.push-back! &out @(Array.unsafe-nth &orig k)))
                           (set! cursor target)))))
-              (String.starts-with? line " ")
-                (let [content (String.suffix line 1)]
+              (byte-starts-with? line " ")
+                (let [content (byte-suffix line 1)]
                   (if (or (>= cursor olen)
                           (/= (Array.unsafe-nth &orig cursor) &content))
                     (set! failed true)
                     (do
                       (Array.push-back! &out content)
                       (set! cursor (Int.inc cursor)))))
-              (String.starts-with? line "-")
-                (let [content (String.suffix line 1)]
+              (byte-starts-with? line "-")
+                (let [content (byte-suffix line 1)]
                   (if (or (>= cursor olen)
                           (/= (Array.unsafe-nth &orig cursor) &content))
                     (set! failed true)
                     (set! cursor (Int.inc cursor))))
-              (String.starts-with? line "+")
-                (Array.push-back! &out (String.suffix line 1))
+              (byte-starts-with? line "+")
+                (Array.push-back! &out (byte-suffix line 1))
               ()))))
       (unless failed
         (for [k cursor olen] (Array.push-back! &out @(Array.unsafe-nth &orig k))))
