@@ -115,21 +115,40 @@
           (Deletion xs) (push-all! &res xs)))
       res))
 
+  ; length of the shortest edit script, by Myers' greedy O(ND) algorithm (1986)
+  (defn- ses-length [old new]
+    (let-do [n (Array.length old)
+             m (Array.length new)
+             off (inc (+ n m))
+             v (Array.replicate (inc (* 2 off)) &0)
+             d -1
+             done false]
+      (while-do (not done)
+        (set! d (inc d))
+        (for [k (max (neg d) (- d (* 2 m))) (inc (min d (- (* 2 n) d))) 2]
+          (let-do [x (if (or (= k (neg d))
+                             (and (/= k d)
+                                  (< @(Array.unsafe-nth &v (+ off (dec k)))
+                                     @(Array.unsafe-nth &v (+ off (inc k))))))
+                     @(Array.unsafe-nth &v (+ off (inc k)))
+                     (inc @(Array.unsafe-nth &v (+ off (dec k)))))]
+            (while (and (< x n)
+                        (< (- x k) m)
+                        (= (Array.unsafe-nth old x)
+                           (Array.unsafe-nth new (- x k))))
+              (set! x (inc x)))
+            (Array.aset! &v (+ off k) x)
+            (when-do (and (>= x n) (>= (- x k) m)) (set! done true) (break)))))
+      d))
+
   (doc lcs-length
     "Returns the length of the longest common subsequence of two arrays.")
   (defn lcs-length [old new]
-    (let-do [d &(diff old new)
-             len 0]
-      (for [i 0 (Array.length d)]
-        (match-ref (Array.unsafe-nth d i)
-          (Eq xs) (set! len (+ len (Array.length xs)))
-          _ ()))
-      len))
+    (/ (- (+ (Array.length old) (Array.length new)) (ses-length old new)) 2))
 
   (doc edit-distance
     "Returns the edit distance (number of insertions plus deletions) between two arrays.")
-  (defn edit-distance [old new]
-    (- (+ (Array.length old) (Array.length new)) (* 2 (lcs-length old new))))
+  (defn edit-distance [old new] (ses-length old new))
 
   (doc similarity
     "Returns a similarity ratio between 0.0 and 1.0 for two arrays, based on their longest common subsequence. Two empty arrays have similarity 1.0.")
