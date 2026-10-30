@@ -25,44 +25,86 @@
       (Deletion x) (String.concat &[@"(Deletion " (prn x) @")"])))
   (implements prn Diff.prn)
 
-  (doc diff
-    "Computes the diff between two arrays, returning a sequence of Eq, Insertion, and Deletion hunks.")
-  (defn diff [old new]
-    (let-do [oidxm {}
-             overlap {}
+  (defn- lower-bound [xs x]
+    (let-do [lo 0
+             hi (Array.length xs)]
+      (while (< lo hi)
+        (let [mid (/ (+ lo hi) 2)]
+          (if (< @(Array.unsafe-nth xs mid) x) (set! lo (inc mid)) (set! hi mid))))
+      lo))
+
+  ; diffs old[olo, ohi) against new[nlo, nhi) into `res`; `diag` holds the
+  ; length of the run ending at the last match seen on each diagonal
+  (defn- diff-range [old new oid nid occ diag res olo ohi nlo nhi]
+    (let-do [m (Array.length nid)
              sso 0
              ssn 0
              sl 0]
+      (for [inew nlo nhi]
+        (let [id @(Array.unsafe-nth nid inew)]
+          (when (>= id 0)
+            (let-do [ol (Array.unsafe-nth occ id)
+                     prev-id (if (> inew nlo)
+                       @(Array.unsafe-nth nid (dec inew))
+                       -1)
+                     end (lower-bound ol ohi)]
+              (for [k (lower-bound ol olo) end]
+                (let-do [p @(Array.unsafe-nth ol k)
+                         d (+ (- p inew) m)
+                         v (if (and (> p olo)
+                                    (= @(Array.unsafe-nth oid (dec p)) prev-id))
+                           (inc @(Array.unsafe-nth diag d))
+                           1)]
+                  (Array.aset! diag d v)
+                  (when-do (> v sl)
+                    (set! sl v)
+                    (set! sso (inc (- p v)))
+                    (set! ssn (inc (- inew v))))))))))
+      (if (= sl 0)
+        (do
+          (when (< nlo nhi)
+            (Array.push-back! res (Insertion (Array.slice new nlo nhi))))
+          (when (< olo ohi)
+            (Array.push-back! res (Deletion (Array.slice old olo ohi)))))
+        (do
+          (diff-range old new oid nid occ diag res olo sso nlo ssn)
+          (Array.push-back! res (Eq (Array.slice new ssn (+ ssn sl))))
+          (diff-range old new oid nid occ diag res (+ sso sl) ohi (+ ssn sl) nhi)))))
+
+  (doc diff
+    "Computes the diff between two arrays, returning a sequence of Eq, Insertion, and Deletion hunks.")
+  (defn diff [old new]
+    (let-do [ids {}
+             oid []
+             nid []
+             occ []
+             diag (Array.replicate (+ (Array.length old) (Array.length new)) &0)
+             res []]
       (for [i 0 (Array.length old)]
-        (let [e (Array.unsafe-nth old i)
-              to-u (Map.get-with-default &oidxm e &[])]
-          (set! oidxm (Map.put oidxm e &(Array.push-back to-u i)))))
-      (for [inew 0 (Array.length new)]
-        (let-do [_overlap {}
-                 ol &(Map.get-with-default &oidxm
-                                           (Array.unsafe-nth new inew)
-                                           &[])]
-          (for [i 0 (Array.length ol)]
-            (let-do [iold @(Array.unsafe-nth ol i)
-                     new-val (Int.inc
-                       (if (/= iold 0) (Map.get &overlap &(Int.dec iold)) iold))]
-              (set! _overlap (Map.put _overlap &iold &new-val))
-              (when-do (> (Map.get &_overlap &iold) sl)
-                (set! sl (Map.get &_overlap &iold))
-                (set! sso (Int.inc (- iold sl)))
-                (set! ssn (Int.inc (- inew sl))))))
-          (set! overlap _overlap)))
-      (if (= 0 sl)
-        (let-do [res []]
-          (when (> (Array.length new) 0)
-            (Array.push-back! &res (Insertion @new)))
-          (when (> (Array.length old) 0) (Array.push-back! &res (Deletion @old)))
-          res)
-        (Array.concat
-          &[(Array.concat
-              &[(diff &(Array.prefix old sso) &(Array.prefix new ssn))
-                [(Eq (Array.slice new ssn (+ ssn sl)))]])
-            (diff &(Array.suffix old (+ sso sl)) &(Array.suffix new (+ ssn sl)))]))))
+        (let-do [e (Array.unsafe-nth old i)
+                 id (Map.get-with-default &ids e &(Array.length &occ))]
+          (when-do (= id (Array.length &occ))
+            (set! ids (Map.put ids e &id))
+            (Array.push-back! &occ []))
+          (Array.push-back! &oid id)
+          (Array.push-back! (Array.unsafe-nth &occ id) i)))
+      (for [i 0 (Array.length new)]
+        (Array.push-back! &nid
+                          (Map.get-with-default &ids
+                                                (Array.unsafe-nth new i)
+                                                &-1)))
+      (diff-range old
+                  new
+                  &oid
+                  &nid
+                  &occ
+                  &diag
+                  &res
+                  0
+                  (Array.length old)
+                  0
+                  (Array.length new))
+      res))
 
   (doc string-diff "Diffs two strings word by word, splitting on whitespace.")
   (defn string-diff [old new] (diff &(String.words old) &(String.words new)))

@@ -61,6 +61,14 @@
       &[(Deletion [1 2]) (Eq [3 4])]
       &(diff &[1 2 3 4] &[3 4])
       "new is a suffix of old")
+    (assert-equal test
+      &[(Insertion [1]) (Eq [1 2]) (Insertion [2]) (Eq [1])]
+      &(diff &[1 2 1] &[1 1 2 2 1])
+      "repeats around an insertion keep the earliest longest run")
+    (assert-equal test
+      &[(Insertion [1]) (Eq [1 2]) (Deletion [2]) (Eq [1])]
+      &(diff &[1 2 2 1] &[1 1 2 1])
+      "repeats around a deletion keep the earliest longest run")
 
     (assert-equal test
       &[1 2 3]
