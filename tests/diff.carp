@@ -464,6 +464,26 @@ d
 e
 FF
 g") 1) "unified-with-context 1 splits hunks with enough gap")
+    (assert-equal test
+      "@@ -3,0 +4,1 @@\n+X\n"
+      &(unified-with-context &(line-diff "a\nb\nc\nd\ne" "a\nb\nc\nX\nd\ne") 0)
+      "a zero-count range names the line before it")
+    (assert-equal test
+      "@@ -4,1 +3,0 @@\n-d\n"
+      &(unified-with-context &(line-diff "a\nb\nc\nd\ne" "a\nb\nc\ne") 0)
+      "a zero-count new range names the line before it")
+    (assert-equal test
+      "@@ -0,0 +1,2 @@\n+a\n+b\n"
+      &(unified &(diff &(the (Array String) []) &[@"a" @"b"]))
+      "an empty old side is -0,0")
+    (assert-equal test
+      "@@ -1,2 +0,0 @@\n-a\n-b\n"
+      &(unified &(diff &[@"a" @"b"] &(the (Array String) [])))
+      "an empty new side is +0,0")
+    (assert-equal test
+      "@@ -1,4 +1,4 @@\n+X\n-a\n b\n c\n d\n"
+      &(unified &(line-diff "a\nb\nc\nd\ne\nf" "X\nb\nc\nd\ne\nf"))
+      "unified ends the last hunk after ctx context lines")
 
     ; patch — apply a unified diff to an original document
     (assert-equal test &(Maybe.Just @"line1
@@ -584,14 +604,12 @@ c"))) "patch returns Nothing when a context line does not match the original")
 b" "@@ garbage @@
  a
 ") "patch returns Nothing on a malformed hunk header")
-    (assert-equal test &(Maybe.Just @"a
-b") &(patch "a
+    (assert-equal test &(the (Maybe String) (Maybe.Nothing)) &(patch "a
 b" "@@ -1,2 +1,2 @@
  a
 é
  b") "patch does not abort on a line that is a single multi-byte character")
-    (assert-equal test &(Maybe.Just @"a
-b") &(patch "a
+    (assert-equal test &(the (Maybe String) (Maybe.Nothing)) &(patch "a
 b" &(String.concat &[@"@@ -1,2 +1,2 @@
  a
 " (latin1-raquo) @"
@@ -609,4 +627,58 @@ b"]) &(String.concat &[@"@@ -1,2 +1,2 @@
 B"])) &(patch &(String.concat &[(latin1-raquo) @"
 b"]) &(unified &(line-diff &(String.concat &[(latin1-raquo) @"
 b"]) &(String.concat &[(latin1-raquo) @"
-B"])))) "patch round-trips a diff of a latin-1 document")))
+B"])))) "patch round-trips a diff of a latin-1 document")
+    (assert-equal test
+      &(Maybe.Just @"a\nb\nc\nX\nd\ne")
+      &(patch "a\nb\nc\nd\ne" "@@ -3,0 +4 @@\n+X")
+      "patch puts a zero-count hunk after the line it names")
+    (assert-equal test
+      &(Maybe.Just @"a\nb\nc\nd\ne\nY\nZ")
+      &(patch "a\nb\nc\nd\ne" "@@ -5,0 +6,2 @@\n+Y\n+Z")
+      "patch appends a zero-count hunk at the end")
+    (assert-equal test
+      &(Maybe.Just @"a\nB\nc")
+      &(patch "a\nb\nc"
+              "diff --git a/f b/f\nindex 1234567..89abcde 100644\n--- a/f\n+++ b/f\n@@ -1,3 +1,3 @@ section\n a\n-b\n+B\n c\n")
+      "patch skips file headers before the first hunk")
+    (assert-equal test
+      &(the (Maybe String) (Maybe.Nothing))
+      &(patch "a\nb\nc" "@@ -1,3 +1,3 @@\n a\n-b")
+      "patch returns Nothing on a truncated hunk")
+    (assert-equal test
+      &(the (Maybe String) (Maybe.Nothing))
+      &(patch "a" "@@ -1 +1 section\n-a\n+A")
+      "patch returns Nothing on a hunk header without its closing @@")
+    (assert-equal test
+      &(the (Maybe String) (Maybe.Nothing))
+      &(patch "a\nb" "@@ -1,2 +1,1 @@\n a\n b")
+      "patch returns Nothing on a hunk with too many context lines")
+    (assert-equal test
+      &(the (Maybe String) (Maybe.Nothing))
+      &(patch "a" "@@ -1 +1 @@\n+X\n+Y\n-a")
+      "patch returns Nothing on a hunk with too many + lines")
+    (assert-equal test
+      &(the (Maybe String) (Maybe.Nothing))
+      &(patch "a\nb" "@@ -1 +1 @@\n-a\n-b\n+X")
+      "patch returns Nothing on a hunk with too many - lines")
+    (assert-equal test
+      &(Maybe.Just @"a\n++ y\nb")
+      &(patch "a\n-- x\nb" "@@ -1,3 +1,3 @@\n a\n--- x\n+++ y\n b")
+      "patch reads --- and +++ inside a hunk as body lines")
+    (assert-equal test
+      &(Maybe.Just @"a\nB")
+      &(patch "a\nb"
+              "@@ -2 +2 @@\n-b\n\\ No newline at end of file\n+B\n\\ No newline at end of file")
+      "patch skips no-newline markers")
+    (assert-equal test
+      &(the (Maybe String) (Maybe.Nothing))
+      &(patch "a\nb"
+              "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-a\n+A\n--- a/g\n+++ b/g\n@@ -2 +2 @@\n-b\n+B")
+      "patch returns Nothing on a second file")
+    (assert-equal test
+      &(Maybe.Just @"a\nX\nb\nc\ne\nY")
+      &(patch "a\nb\nc\nd\ne"
+              &(unified-with-context
+                &(line-diff "a\nb\nc\nd\ne" "a\nX\nb\nc\ne\nY")
+                0))
+      "patch round-trips unified-with-context 0")))

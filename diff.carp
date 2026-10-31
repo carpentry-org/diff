@@ -205,11 +205,11 @@
   (defn- format-hunk [old-start old-count new-start new-count hunk-lines]
     (let [header (String.concat
             &[@"@@ -"
-              (Int.str old-start)
+              (Int.str (if (= old-count 0) (dec old-start) old-start))
               @","
               (Int.str old-count)
               @" +"
-              (Int.str new-start)
+              (Int.str (if (= new-count 0) (dec new-start) new-start))
               @","
               (Int.str new-count)
               @" @@"])
@@ -252,7 +252,7 @@ Uses the given number of context lines around changes.")
             (Eq lines)
               (let-do [n (Array.length lines)]
                 (if in-hunk
-                  (if (<= n (* 2 ctx))
+                  (if (and (<= n (* 2 ctx)) (< (inc i) (Array.length d)))
                     (for [j 0 n]
                       (let-do [line (Array.unsafe-nth lines j)]
                         (Array.push-back! &hunk-lines
@@ -333,69 +333,112 @@ Uses 3 lines of context around changes.")
 
   (defn- byte-suffix [s b] (String.byte-slice s b (String.length s)))
 
-  ; parses the 1-based old-file start line from a unified hunk header such as
-  ; `@@ -3,4 +3,5 @@`; the count is optional (`@@ -3 +3 @@` means one line).
-  (defn- parse-hunk-start [header]
-    (let-do [tokens (String.split-by header &[\space])
-             res (the (Maybe Int) (Maybe.Nothing))]
-      (for [i 0 (Array.length &tokens)]
-        (let [tok (Array.unsafe-nth &tokens i)]
-          (when (and (Maybe.nothing? &res)
-                     (byte-starts-with? tok "-")
-                     (> (String.length tok) 1))
-            (let [range (byte-suffix tok 1)]
-              (set! res
-                    (Int.from-string
-                      (Array.unsafe-nth &(String.split-by &range &[\,]) 0)))))))
-      res))
+  ; a non-negative decimal without sign, padding or overflow, else -1
+  (defn- parse-num [s]
+    (match (Int.from-string s)
+      (Maybe.Just n) (if (and (>= n 0) (= &(Int.str n) s)) n -1)
+      _ -1))
+
+  (defn- parse-range [s]
+    (let [nums (Array.copy-map &parse-num &(String.split-by s &[\,]))]
+      (if (= (Array.length &nums) 1) (Array.push-back nums 1) nums)))
+
+  ; parses `@@ -a[,b] +c[,d] @@ …` into [a b c d]; an omitted count is 1
+  (defn- parse-hunk-header [header]
+    (let [tokens (String.split-by header &[\space])]
+      (if (and (>= (Array.length &tokens) 4)
+               (= (Array.unsafe-nth &tokens 0) "@@")
+               (byte-starts-with? (Array.unsafe-nth &tokens 1) "-")
+               (byte-starts-with? (Array.unsafe-nth &tokens 2) "+")
+               (byte-starts-with? (Array.unsafe-nth &tokens 3) "@@"))
+        (let [r (Array.concat
+                &[(parse-range &(byte-suffix (Array.unsafe-nth &tokens 1) 1))
+                  (parse-range &(byte-suffix (Array.unsafe-nth &tokens 2) 1))])]
+          (if (and (= (Array.length &r) 4) (Array.all? &(fn [x] (>= @x 0)) &r))
+            (Maybe.Just r)
+            (Maybe.Nothing)))
+        (Maybe.Nothing))))
+
+  (defn- old-line? [orig cursor line]
+    (and (< cursor (Array.length orig))
+         (= (Array.unsafe-nth orig cursor) &(byte-suffix line 1))))
 
   (doc patch
-    "Applies a unified diff `patch-text` (as produced by `unified`) to the
-original document `original`, returning the patched document. Context and
-deletion lines are checked against `original`, so this is a safe applier:
-it returns `Nothing` if the patch does not apply — a context or deletion
-line that does not match, or a hunk header that is malformed, out of range,
-or out of order. Both documents are split and rejoined on newlines, so
-`(patch old (unified (line-diff old new)))` reproduces `new`.")
+    "Applies a single-file unified diff `patch-text`, as produced by `unified`,
+`diff -u` or `git diff`, to the original document `original`, returning the
+patched document. Lines before the first hunk, such as file headers, are
+skipped. Context and deletion lines are checked against `original`, so this
+is a safe applier: it returns `Nothing` if the patch does not apply — a
+context or deletion line that does not match, a hunk header that is
+malformed, out of range, or out of order, a hunk whose lines do not add up to
+its header's counts, or the header of a second file. Both documents are split
+and rejoined on newlines, so `(patch old (unified (line-diff old new)))`
+reproduces `new`.")
   (defn patch [original patch-text]
     (let-do [orig (String.split-by original &[\newline])
              lines (String.split-by patch-text &[\newline])
+             n (Array.length &lines)
              out (the (Array String) [])
              olen (Array.length &orig)
              cursor 0
+             old-left 0
+             new-left 0
+             seen-hunk false
              failed false]
-      (for [i 0 (Array.length &lines)]
+      (for [i 0 n]
         (unless failed
           (let [line (Array.unsafe-nth &lines i)]
-            (cond
-              (byte-starts-with? line "@@")
-                (match (parse-hunk-start line)
-                  (Maybe.Nothing) (set! failed true)
-                  (Maybe.Just start)
-                    (let [target (if (< start 1) 0 (Int.dec start))]
-                      (if (or (< target cursor) (> target olen))
-                        (set! failed true)
-                        (do
-                          (for [k cursor target]
-                            (Array.push-back! &out @(Array.unsafe-nth &orig k)))
-                          (set! cursor target)))))
-              (byte-starts-with? line " ")
-                (let [content (byte-suffix line 1)]
-                  (if (or (>= cursor olen)
-                          (/= (Array.unsafe-nth &orig cursor) &content))
-                    (set! failed true)
+            (if (or (> old-left 0) (> new-left 0))
+              (cond
+                (byte-starts-with? line " ")
+                  (if (and (> old-left 0)
+                           (> new-left 0)
+                           (old-line? &orig cursor line))
                     (do
-                      (Array.push-back! &out content)
-                      (set! cursor (Int.inc cursor)))))
-              (byte-starts-with? line "-")
-                (let [content (byte-suffix line 1)]
-                  (if (or (>= cursor olen)
-                          (/= (Array.unsafe-nth &orig cursor) &content))
-                    (set! failed true)
-                    (set! cursor (Int.inc cursor))))
-              (byte-starts-with? line "+")
-                (Array.push-back! &out (byte-suffix line 1))
-              ()))))
+                      (Array.push-back! &out (byte-suffix line 1))
+                      (set! cursor (inc cursor))
+                      (set! old-left (dec old-left))
+                      (set! new-left (dec new-left)))
+                    (set! failed true))
+                (byte-starts-with? line "-")
+                  (if (and (> old-left 0) (old-line? &orig cursor line))
+                    (do
+                      (set! cursor (inc cursor))
+                      (set! old-left (dec old-left)))
+                    (set! failed true))
+                (byte-starts-with? line "+")
+                  (if (> new-left 0)
+                    (do
+                      (Array.push-back! &out (byte-suffix line 1))
+                      (set! new-left (dec new-left)))
+                    (set! failed true))
+                (byte-starts-with? line "\\") ()
+                (set! failed true))
+              (cond
+                (byte-starts-with? line "@@")
+                  (match (parse-hunk-header line)
+                    (Maybe.Nothing) (set! failed true)
+                    (Maybe.Just r)
+                      (let [old-count @(Array.unsafe-nth &r 1)
+                            target (if (= old-count 0)
+                              @(Array.unsafe-nth &r 0)
+                              (dec @(Array.unsafe-nth &r 0)))]
+                        (if (or (< target cursor) (> target olen))
+                          (set! failed true)
+                          (do
+                            (for [k cursor target]
+                              (Array.push-back! &out @(Array.unsafe-nth &orig k)))
+                            (set! cursor target)
+                            (set! old-left old-count)
+                            (set! new-left @(Array.unsafe-nth &r 3))
+                            (set! seen-hunk true)))))
+                (and seen-hunk
+                     (byte-starts-with? line "--- ")
+                     (< (inc i) n)
+                     (byte-starts-with? (Array.unsafe-nth &lines (inc i)) "+++ "))
+                  (set! failed true)
+                ())))))
+      (when (or (> old-left 0) (> new-left 0)) (set! failed true))
       (unless failed
         (for [k cursor olen] (Array.push-back! &out @(Array.unsafe-nth &orig k))))
       (if failed (Maybe.Nothing) (Maybe.Just (String.join "
