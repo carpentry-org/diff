@@ -202,6 +202,60 @@
 
   (defn- change? [d] (match-ref d (Eq _) false _ true))
 
+  (defn- side-end [xs last?]
+    (let [k (Array.length xs)]
+      (if (or (not last?) (= k 0))
+        @xs
+        (let [x (Array.unsafe-nth xs (dec k))
+              ys (Array.prefix xs (dec k))]
+          (if (String.empty? x)
+            ys
+            (Array.push-back ys
+                             (String.concat &[@x
+                                              @"\n\\ No newline at end of file"])))))))
+
+  (defn- push-hunk! [res f xs]
+    (unless (Array.empty? &xs) (Array.push-back! res (f xs))))
+
+  ; reads each side as a text: a final "" is its newline, not a line
+  (defn- line-hunks [d]
+    (let-do [olen 0
+             nlen 0
+             o 0
+             n 0
+             res (the (Array (Diff (Array String))) [])]
+      (for [i 0 (Array.length d)]
+        (match-ref (Array.unsafe-nth d i)
+          (Eq xs)
+            (do
+              (set! olen (+ olen (Array.length xs)))
+              (set! nlen (+ nlen (Array.length xs))))
+          (Deletion xs) (set! olen (+ olen (Array.length xs)))
+          (Insertion xs) (set! nlen (+ nlen (Array.length xs)))))
+      (for [i 0 (Array.length d)]
+        (match-ref (Array.unsafe-nth d i)
+          (Eq xs)
+            (let-do [k (Array.length xs)
+                     ol (= (+ o k) olen)
+                     nl (= (+ n k) nlen)]
+              (set! o (+ o k))
+              (set! n (+ n k))
+              (if (or (= ol nl) (= k 0))
+                (push-hunk! &res Eq (side-end xs ol))
+                (let-do [x (Array.suffix xs (dec k))]
+                  (push-hunk! &res Eq (Array.prefix xs (dec k)))
+                  (push-hunk! &res Deletion (side-end &x ol))
+                  (push-hunk! &res Insertion (side-end &x nl)))))
+          (Deletion xs)
+            (do
+              (set! o (+ o (Array.length xs)))
+              (push-hunk! &res Deletion (side-end xs (= o olen))))
+          (Insertion xs)
+            (do
+              (set! n (+ n (Array.length xs)))
+              (push-hunk! &res Insertion (side-end xs (= n nlen))))))
+      res))
+
   (defn- format-hunk [old-start old-count new-start new-count hunk-lines]
     (let [header (String.concat
             &[@"@@ -"
@@ -222,9 +276,12 @@
   (doc unified-with-context
     "Renders a line diff in unified diff format with hunk headers.
 Expects the output of `line-diff` or a diff of string arrays.
-Uses the given number of context lines around changes.")
+Uses the given number of context lines around changes.
+A side's final `\"\"` is its final newline, and a last line without one is
+followed by `\\ No newline at end of file`.")
   (defn unified-with-context [d ctx]
-    (let-do [old-pos 1
+    (let-do [parts (line-hunks d)
+             old-pos 1
              new-pos 1
              hunk-lines (the (Array String) [])
              hunk-old-start 1
@@ -237,8 +294,8 @@ Uses the given number of context lines around changes.")
              lead-new-start 1
              lead-count 0
              hunks (the (Array String) [])]
-      (for [i 0 (Array.length d)]
-        (let-do [elem (Array.unsafe-nth d i)]
+      (for [i 0 (Array.length &parts)]
+        (let-do [elem (Array.unsafe-nth &parts i)]
           (when-do (and (not in-hunk) (change? elem))
             (set! in-hunk true)
             (set! hunk-lines (Array.copy &lead-lines))
@@ -252,7 +309,7 @@ Uses the given number of context lines around changes.")
             (Eq lines)
               (let-do [n (Array.length lines)]
                 (if in-hunk
-                  (if (and (<= n (* 2 ctx)) (< (inc i) (Array.length d)))
+                  (if (and (<= n (* 2 ctx)) (< (inc i) (Array.length &parts)))
                     (for [j 0 n]
                       (let-do [line (Array.unsafe-nth lines j)]
                         (Array.push-back! &hunk-lines
@@ -323,7 +380,9 @@ Uses the given number of context lines around changes.")
 
   (doc unified "Renders a line diff in unified diff format with hunk headers.
 Expects the output of `line-diff` or a diff of string arrays.
-Uses 3 lines of context around changes.")
+Uses 3 lines of context around changes.
+A side's final `\"\"` is its final newline, and a last line without one is
+followed by `\\ No newline at end of file`.")
   (defn unified [d] (unified-with-context d 3))
 
   ; core's starts-with?/suffix guard on byte length but index characters; patch input is bytes
@@ -359,8 +418,8 @@ Uses 3 lines of context around changes.")
             (Maybe.Nothing)))
         (Maybe.Nothing))))
 
-  (defn- old-line? [orig cursor line]
-    (and (< cursor (Array.length orig))
+  (defn- old-line? [orig olen cursor line]
+    (and (< cursor olen)
          (= (Array.unsafe-nth orig cursor) &(byte-suffix line 1))))
 
   (doc patch
@@ -371,46 +430,58 @@ skipped. Context and deletion lines are checked against `original`, so this
 is a safe applier: it returns `Nothing` if the patch does not apply — a
 context or deletion line that does not match, a hunk header that is
 malformed, out of range, or out of order, a hunk whose lines do not add up to
-its header's counts, or the header of a second file. Both documents are split
-and rejoined on newlines, so `(patch old (unified (line-diff old new)))`
-reproduces `new`.")
+its header's counts, a `\\ No newline at end of file` marker that is missing,
+contradicts `original` or does not follow its side's last line, or the header
+of a second file. Both documents are split and rejoined on newlines, and the
+markers decide whether the result ends with one, so
+`(patch old (unified (line-diff old new)))` reproduces `new`.")
   (defn patch [original patch-text]
     (let-do [orig (String.split-by original &[\newline])
+             ends-nl (String.empty? (Array.unsafe-last &orig))
+             olen (if ends-nl (dec (Array.length &orig)) (Array.length &orig))
+             nonl-end (if ends-nl -1 olen)
              lines (String.split-by patch-text &[\newline])
              n (Array.length &lines)
              out (the (Array String) [])
-             olen (Array.length &orig)
              cursor 0
              old-left 0
              new-left 0
              seen-hunk false
+             nonl-at -1
              failed false]
       (for [i 0 n]
         (unless failed
-          (let [line (Array.unsafe-nth &lines i)]
+          (let [line (Array.unsafe-nth &lines i)
+                marked (and (< (inc i) n)
+                            (byte-starts-with? (Array.unsafe-nth &lines (inc i))
+                                               "\\"))]
             (if (or (> old-left 0) (> new-left 0))
               (cond
                 (byte-starts-with? line " ")
                   (if (and (> old-left 0)
                            (> new-left 0)
-                           (old-line? &orig cursor line))
+                           (old-line? &orig olen cursor line))
                     (do
                       (Array.push-back! &out (byte-suffix line 1))
                       (set! cursor (inc cursor))
                       (set! old-left (dec old-left))
-                      (set! new-left (dec new-left)))
+                      (set! new-left (dec new-left))
+                      (when (/= marked (= cursor nonl-end)) (set! failed true))
+                      (when marked (set! nonl-at (Array.length &out))))
                     (set! failed true))
                 (byte-starts-with? line "-")
-                  (if (and (> old-left 0) (old-line? &orig cursor line))
+                  (if (and (> old-left 0) (old-line? &orig olen cursor line))
                     (do
                       (set! cursor (inc cursor))
-                      (set! old-left (dec old-left)))
+                      (set! old-left (dec old-left))
+                      (when (/= marked (= cursor nonl-end)) (set! failed true)))
                     (set! failed true))
                 (byte-starts-with? line "+")
                   (if (> new-left 0)
                     (do
                       (Array.push-back! &out (byte-suffix line 1))
-                      (set! new-left (dec new-left)))
+                      (set! new-left (dec new-left))
+                      (when marked (set! nonl-at (Array.length &out))))
                     (set! failed true))
                 (byte-starts-with? line "\\") ()
                 (set! failed true))
@@ -439,7 +510,15 @@ reproduces `new`.")
                   (set! failed true)
                 ())))))
       (when (or (> old-left 0) (> new-left 0)) (set! failed true))
-      (unless failed
-        (for [k cursor olen] (Array.push-back! &out @(Array.unsafe-nth &orig k))))
-      (if failed (Maybe.Nothing) (Maybe.Just (String.join "
-" &out))))))
+      (let-do [ends (if (< cursor olen) ends-nl (< nonl-at 0))]
+        (unless failed
+          (for [k cursor olen]
+            (Array.push-back! &out @(Array.unsafe-nth &orig k))))
+        (when (and (>= nonl-at 0) (/= nonl-at (Array.length &out)))
+          (set! failed true))
+        (if failed
+          (Maybe.Nothing)
+          (Maybe.Just
+            (if (and ends (not (Array.empty? &out)))
+              (String.concat &[(String.join "\n" &out) @"\n"])
+              (String.join "\n" &out))))))))
