@@ -451,7 +451,9 @@ markers decide whether the result ends with one, so
              failed false]
       (for [i 0 n]
         (unless failed
-          (let [line (Array.unsafe-nth &lines i)
+          (let [raw (Array.unsafe-nth &lines i)
+                ; an empty line is an empty context line, except the "" after the final newline
+                line (if (and (String.empty? raw) (< (inc i) n)) " " raw)
                 marked (and (< (inc i) n)
                             (byte-starts-with? (Array.unsafe-nth &lines (inc i))
                                                "\\"))]
