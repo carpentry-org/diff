@@ -675,6 +675,23 @@ B"])))) "patch round-trips a diff of a latin-1 document")
       &(patch "a\nb\nc" "@@ -1,3 +1,3 @@\n a\n-b")
       "patch returns Nothing on a truncated hunk")
     (assert-equal test
+      &(Maybe.Just @"A\n\nb\n")
+      &(patch "a\n\nb\n" "@@ -1,2 +1,2 @@\n-a\n+A\n\n")
+      "patch reads an empty line in a hunk as an empty context line")
+    (assert-equal test
+      &(Maybe.Just @"a\n\nB\n")
+      &(patch "a\n\nb\n" "@@ -1,3 +1,3 @@\n a\n\n-b\n+B\n")
+      "patch reads an empty context line next to a change")
+    (assert-equal test
+      &(Maybe.Just @"A\n\nb\nc\nD\n")
+      &(patch "a\n\nb\nc\nd\n"
+              "@@ -1,2 +1,2 @@\n-a\n+A\n\n@@ -5 +5 @@\n-d\n+D\n")
+      "patch reads an empty context line before the next hunk header")
+    (assert-equal test
+      &(the (Maybe String) (Maybe.Nothing))
+      &(patch "a\n\nb\n" "@@ -1,2 +1,2 @@\n-a\n+A\n")
+      "patch does not read the final newline as an empty context line")
+    (assert-equal test
       &(the (Maybe String) (Maybe.Nothing))
       &(patch "a" "@@ -1 +1 section\n-a\n+A")
       "patch returns Nothing on a hunk header without its closing @@")
